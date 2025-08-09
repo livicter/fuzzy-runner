@@ -1,0 +1,12 @@
+[package]
+name = "fuzzy_runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = "0.13.2"
+bevy_asepritesheet = "0.6.0"
+bevy-parallax = "0.9.0"
+bevy_rapier2d = "0.25.0"
+rand = "0.8.5"
+bevy_sprite = "0.10.1"
