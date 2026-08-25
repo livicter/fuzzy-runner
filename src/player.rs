@@ -388,7 +388,7 @@ fn flash_invincibility(time: Res<Time>, mut query: Query<(&Player, &mut Sprite)>
 
 fn check_collisions(
     mut player_query: Query<(&mut Transform, &mut Player)>,
-    platform_query: Query<&Transform, (With<Platform>, Without<Player>)>,
+    platform_query: Query<(&Transform, &Platform), Without<Player>>,
     obstacle_query: Query<(&Transform, &fuzzy_runner::Obstacle), Without<Player>>,
     mut stats: ResMut<RunStats>,
     config: Res<GameConfig>,
@@ -405,8 +405,8 @@ fn check_collisions(
     let standing_size = PLAYER_SIZE;
     let player_pos = player_transform.translation;
 
-    for platform_transform in &platform_query {
-        let platform_size = Vec2::new(platform_transform.scale.x, platform_transform.scale.y);
+    for (platform_transform, platform) in &platform_query {
+        let platform_size = platform.size;
         let platform_pos = platform_transform.translation;
         if aabb_overlap(player_pos, standing_size, platform_pos, platform_size)
             && player.velocity.y <= 0.0
