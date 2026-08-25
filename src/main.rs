@@ -4,12 +4,14 @@ mod assets;
 mod background;
 mod collectibles;
 mod enemy;
+mod fx;
 mod platform;
 mod player;
 mod ui;
 
 use crate::assets::AssetsPlugin;
 use crate::enemy::EnemyPlugin;
+use crate::fx::FxPlugin;
 use background::BackgroundPlugin;
 use collectibles::CollectiblesPlugin;
 use fuzzy_runner::{
@@ -43,6 +45,7 @@ fn main() {
             PlayerPlugin,
             PlatformPlugin,
             CollectiblesPlugin,
+            FxPlugin,
             UiPlugin,
             EnemyPlugin,
             BackgroundPlugin,

@@ -86,7 +86,7 @@ Needs a windowed GPU environment (Bevy / WGPU).
 
 Rust 2021, Bevy 0.13, `bevy-parallax` for the city layers, `rand` for the track.
 
-Menus, HUD, coins, crates, gems, and rooftop tiles use free **Kenney** (CC0) packs plus **Orbitron** (OFL) for titles. Credits are in `ATTRIBUTION.md`.
+Menus, HUD, keyboard prompts, spinning coins, roadside temples, and rooftop tiles use free **Kenney** (CC0) packs plus **Orbitron** (OFL) for titles. Credits are in `ATTRIBUTION.md`.
 
 ```bash
 cargo test

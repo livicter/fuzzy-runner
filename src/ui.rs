@@ -4,8 +4,8 @@ use bevy::sprite::{BorderRect, ImageScaleMode, SliceScaleMode, TextureSlicer};
 use fuzzy_runner::{
     despawn_screen, CoinText, DeathEvent, Difficulty, DistanceText, GameConfig, GameState,
     HighScores, LastRun, OnGameOverMenu, OnGameScreen, OnMainMenu, OnPauseMenu, OnSettingsMenu,
-    Player, PowerUpCollected, RunStats, ScoreText, SettingsOrigin, StatusText, ThreatFill,
-    NEON_CYAN, NEON_GOLD, NEON_LIME, NEON_MAGENTA,
+    PauseButton, Player, PowerUpCollected, RunStats, ScoreText, SettingsOrigin, StatusText,
+    ThreatFill, NEON_CYAN, NEON_GOLD, NEON_LIME, NEON_MAGENTA,
 };
 
 #[derive(Component)]
@@ -63,6 +63,7 @@ impl Plugin for UiPlugin {
                     update_difficulty_label.run_if(in_state(GameState::SettingsMenu)),
                     paint_difficulty_chips.run_if(in_state(GameState::SettingsMenu)),
                     update_hud.run_if(in_state(GameState::Playing)),
+                    handle_pause_button.run_if(in_state(GameState::Playing)),
                     show_power_up_status,
                     paint_menu_buttons,
                     start_from_keyboard.run_if(in_state(GameState::Menu)),
@@ -170,6 +171,17 @@ fn handle_menu_button_actions(
                     game_state.set(GameState::ReturnToMenu);
                 }
             }
+        }
+    }
+}
+
+fn handle_pause_button(
+    query: Query<&Interaction, (Changed<Interaction>, With<PauseButton>, With<Button>)>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    for interaction in &query {
+        if *interaction == Interaction::Pressed {
+            next_state.set(GameState::Paused);
         }
     }
 }
@@ -327,10 +339,24 @@ fn spawn_icon_label(
         });
 }
 
+fn spawn_key_hint(parent: &mut ChildBuilder, key: Handle<Image>, wide: bool) {
+    parent.spawn(ImageBundle {
+        style: Style {
+            width: Val::Px(if wide { 54.0 } else { 28.0 }),
+            height: Val::Px(28.0),
+            ..default()
+        },
+        image: UiImage::new(key),
+        background_color: Color::WHITE.into(),
+        ..default()
+    });
+}
+
 fn spawn_control_chip(
     parent: &mut ChildBuilder,
     assets: &GameAssets,
-    icon: Handle<Image>,
+    keys: &[Handle<Image>],
+    wide_last: bool,
     text: &str,
 ) {
     parent
@@ -338,23 +364,17 @@ fn spawn_control_chip(
             style: Style {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                margin: UiRect::horizontal(Val::Px(10.0)),
+                column_gap: Val::Px(4.0),
+                margin: UiRect::horizontal(Val::Px(8.0)),
                 ..default()
             },
             ..default()
         })
         .with_children(|row| {
-            row.spawn(ImageBundle {
-                style: Style {
-                    width: Val::Px(22.0),
-                    height: Val::Px(22.0),
-                    ..default()
-                },
-                image: UiImage::new(icon),
-                background_color: NEON_CYAN.into(),
-                ..default()
-            });
+            let last = keys.len().saturating_sub(1);
+            for (i, key) in keys.iter().enumerate() {
+                spawn_key_hint(row, key.clone(), wide_last && i == last);
+            }
             row.spawn(TextBundle::from_section(
                 text,
                 hud_style(assets, 16.0, Color::rgb(0.82, 0.88, 1.0)),
@@ -383,16 +403,29 @@ fn setup_main_menu(mut commands: Commands, highs: Res<HighScores>, assets: Res<G
                     nine_slice(),
                 ))
                 .with_children(|panel| {
-                    panel.spawn(
-                        TextBundle::from_section(
-                            "CYBER TEMPLE",
-                            title_style(&assets, 54.0, NEON_CYAN),
-                        )
-                        .with_style(Style {
-                            margin: UiRect::bottom(Val::Px(2.0)),
-                            ..default()
-                        }),
-                    );
+                    panel
+                        .spawn((
+                            ImageBundle {
+                                style: Style {
+                                    width: Val::Px(420.0),
+                                    height: Val::Px(72.0),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    margin: UiRect::bottom(Val::Px(6.0)),
+                                    ..default()
+                                },
+                                image: UiImage::new(assets.banner_curtain.clone()),
+                                background_color: Color::WHITE.into(),
+                                ..default()
+                            },
+                            nine_slice(),
+                        ))
+                        .with_children(|banner| {
+                            banner.spawn(TextBundle::from_section(
+                                "CYBER TEMPLE",
+                                title_style(&assets, 34.0, Color::rgb(0.22, 0.12, 0.06)),
+                            ));
+                        });
                     panel.spawn(
                         TextBundle::from_section(
                             "NEON ROOFTOP RUN",
@@ -461,32 +494,79 @@ fn setup_main_menu(mut commands: Commands, highs: Res<HighScores>, assets: Res<G
                         .spawn(NodeBundle {
                             style: Style {
                                 flex_direction: FlexDirection::Row,
+                                flex_wrap: FlexWrap::Wrap,
+                                justify_content: JustifyContent::Center,
+                                row_gap: Val::Px(8.0),
                                 margin: UiRect::top(Val::Px(18.0)),
                                 ..default()
                             },
                             ..default()
                         })
                         .with_children(|row| {
-                            spawn_control_chip(row, &assets, assets.icon_info.clone(), "SWIPE");
                             spawn_control_chip(
                                 row,
                                 &assets,
-                                assets.icon_arrow_left.clone(),
+                                &[
+                                    assets.key_a.clone(),
+                                    assets.key_left.clone(),
+                                    assets.key_d.clone(),
+                                    assets.key_right.clone(),
+                                ],
+                                false,
                                 "LANE",
                             );
                             spawn_control_chip(
                                 row,
                                 &assets,
-                                assets.icon_arrow_right.clone(),
-                                "LANE",
+                                &[
+                                    assets.key_w.clone(),
+                                    assets.key_up.clone(),
+                                    assets.key_space.clone(),
+                                ],
+                                true,
+                                "JUMP",
                             );
-                            spawn_control_chip(row, &assets, assets.icon_arrow_up.clone(), "JUMP");
                             spawn_control_chip(
                                 row,
                                 &assets,
-                                assets.icon_arrow_down.clone(),
+                                &[assets.key_s.clone(), assets.key_down.clone()],
+                                false,
                                 "SLIDE",
                             );
+                            spawn_control_chip(
+                                row,
+                                &assets,
+                                &[assets.key_esc.clone()],
+                                true,
+                                "PAUSE",
+                            );
+                        });
+                    panel
+                        .spawn(NodeBundle {
+                            style: Style {
+                                flex_direction: FlexDirection::Row,
+                                align_items: AlignItems::Center,
+                                column_gap: Val::Px(6.0),
+                                margin: UiRect::top(Val::Px(8.0)),
+                                ..default()
+                            },
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            row.spawn(ImageBundle {
+                                style: Style {
+                                    width: Val::Px(16.0),
+                                    height: Val::Px(16.0),
+                                    ..default()
+                                },
+                                image: UiImage::new(assets.icon_info.clone()),
+                                background_color: NEON_CYAN.into(),
+                                ..default()
+                            });
+                            row.spawn(TextBundle::from_section(
+                                "or swipe to steer, jump, and slide",
+                                hud_style(&assets, 14.0, Color::rgb(0.7, 0.78, 0.95)),
+                            ));
                         });
                 });
         });
@@ -634,29 +714,26 @@ fn setup_pause_menu(mut commands: Commands, assets: Res<GameAssets>) {
                 ))
                 .with_children(|panel| {
                     panel
-                        .spawn(NodeBundle {
-                            style: Style {
-                                flex_direction: FlexDirection::Row,
-                                align_items: AlignItems::Center,
-                                column_gap: Val::Px(10.0),
-                                margin: UiRect::bottom(Val::Px(12.0)),
-                                ..default()
-                            },
-                            ..default()
-                        })
-                        .with_children(|row| {
-                            row.spawn(ImageBundle {
+                        .spawn((
+                            ImageBundle {
                                 style: Style {
-                                    width: Val::Px(32.0),
-                                    height: Val::Px(32.0),
+                                    width: Val::Px(280.0),
+                                    height: Val::Px(64.0),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    margin: UiRect::bottom(Val::Px(12.0)),
                                     ..default()
                                 },
-                                image: UiImage::new(assets.icon_pause.clone()),
+                                image: UiImage::new(assets.banner_hanging.clone()),
+                                background_color: Color::WHITE.into(),
                                 ..default()
-                            });
-                            row.spawn(TextBundle::from_section(
+                            },
+                            nine_slice(),
+                        ))
+                        .with_children(|banner| {
+                            banner.spawn(TextBundle::from_section(
                                 "PAUSED",
-                                title_style(&assets, 40.0, NEON_CYAN),
+                                title_style(&assets, 28.0, Color::rgb(0.22, 0.12, 0.06)),
                             ));
                         });
                     spawn_image_button(
@@ -699,41 +776,6 @@ fn setup_pause_menu(mut commands: Commands, assets: Res<GameAssets>) {
         });
 }
 
-fn hud_stat_row(
-    parent: &mut ChildBuilder,
-    assets: &GameAssets,
-    icon: Handle<Image>,
-    value: &str,
-    color: Color,
-    marker: impl Bundle,
-) {
-    parent
-        .spawn(NodeBundle {
-            style: Style {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(8.0),
-                ..default()
-            },
-            ..default()
-        })
-        .with_children(|row| {
-            row.spawn(ImageBundle {
-                style: Style {
-                    width: Val::Px(24.0),
-                    height: Val::Px(24.0),
-                    ..default()
-                },
-                image: UiImage::new(icon),
-                ..default()
-            });
-            row.spawn((
-                TextBundle::from_section(value, hud_style(assets, 20.0, color)),
-                marker,
-            ));
-        });
-}
-
 fn setup_game_ui(
     mut commands: Commands,
     existing: Query<Entity, With<ScoreText>>,
@@ -745,72 +787,39 @@ fn setup_game_ui(
 
     commands
         .spawn((
-            ImageBundle {
+            NodeBundle {
                 style: Style {
                     position_type: PositionType::Absolute,
-                    left: Val::Px(16.0),
-                    top: Val::Px(14.0),
-                    padding: UiRect::axes(Val::Px(16.0), Val::Px(12.0)),
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(4.0),
-                    min_width: Val::Px(220.0),
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    padding: UiRect::axes(Val::Px(16.0), Val::Px(10.0)),
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::FlexStart,
                     ..default()
                 },
-                image: UiImage::new(assets.panel_pixel.clone()),
                 ..default()
             },
-            nine_slice(),
             OnGameScreen,
         ))
-        .with_children(|parent| {
-            parent.spawn((
-                TextBundle::from_section("SCORE 0", hud_style(&assets, 28.0, Color::WHITE)),
-                ScoreText,
-            ));
-            hud_stat_row(
-                parent,
-                &assets,
-                assets.icon_star.clone(),
-                "0m",
-                NEON_CYAN,
-                DistanceText,
-            );
-            hud_stat_row(
-                parent,
-                &assets,
-                assets.icon_coin.clone(),
-                "0",
-                NEON_GOLD,
-                CoinText,
-            );
-            parent.spawn((
-                TextBundle::from_section("", hud_style(&assets, 16.0, NEON_LIME)),
-                StatusText,
-            ));
-        });
-
-    commands
-        .spawn((
-            ImageBundle {
-                style: Style {
-                    position_type: PositionType::Absolute,
-                    right: Val::Px(16.0),
-                    top: Val::Px(14.0),
-                    width: Val::Px(220.0),
-                    padding: UiRect::all(Val::Px(12.0)),
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(6.0),
+        .with_children(|bar| {
+            bar.spawn((
+                ImageBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(4.0),
+                        min_width: Val::Px(180.0),
+                        padding: UiRect::all(Val::Px(10.0)),
+                        ..default()
+                    },
+                    image: UiImage::new(assets.panel_pixel.clone()),
                     ..default()
                 },
-                image: UiImage::new(assets.panel_pixel.clone()),
-                ..default()
-            },
-            nine_slice(),
-            OnGameScreen,
-        ))
-        .with_children(|parent| {
-            parent
-                .spawn(NodeBundle {
+                nine_slice(),
+            ))
+            .with_children(|left| {
+                left.spawn(NodeBundle {
                     style: Style {
                         flex_direction: FlexDirection::Row,
                         align_items: AlignItems::Center,
@@ -822,54 +831,229 @@ fn setup_game_ui(
                 .with_children(|row| {
                     row.spawn(ImageBundle {
                         style: Style {
-                            width: Val::Px(22.0),
-                            height: Val::Px(22.0),
+                            width: Val::Px(36.0),
+                            height: Val::Px(36.0),
                             ..default()
                         },
-                        image: UiImage::new(assets.icon_heart.clone()),
+                        image: UiImage::new(assets.icon_coin.clone()),
                         ..default()
                     });
+                    row.spawn((
+                        TextBundle::from_section("0", hud_style(&assets, 34.0, NEON_GOLD)),
+                        CoinText,
+                    ));
+                });
+                left.spawn((
+                    TextBundle::from_section("SCORE 0", hud_style(&assets, 16.0, Color::WHITE)),
+                    ScoreText,
+                ));
+                left.spawn((
+                    TextBundle::from_section("", hud_style(&assets, 15.0, NEON_LIME)),
+                    StatusText,
+                ));
+            });
+
+            bar.spawn((
+                ImageBundle {
+                    style: Style {
+                        width: Val::Px(280.0),
+                        height: Val::Px(56.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        margin: UiRect::top(Val::Px(4.0)),
+                        ..default()
+                    },
+                    image: UiImage::new(assets.banner.clone()),
+                    background_color: Color::WHITE.into(),
+                    ..default()
+                },
+                nine_slice(),
+            ))
+            .with_children(|banner| {
+                banner.spawn((
+                    TextBundle::from_section(
+                        "0m",
+                        hud_style(&assets, 26.0, Color::rgb(0.2, 0.12, 0.08)),
+                    ),
+                    DistanceText,
+                ));
+            });
+
+            bar.spawn(NodeBundle {
+                style: Style {
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::FlexEnd,
+                    row_gap: Val::Px(8.0),
+                    min_width: Val::Px(180.0),
+                    ..default()
+                },
+                ..default()
+            })
+            .with_children(|right| {
+                right
+                    .spawn((
+                        ButtonBundle {
+                            style: Style {
+                                width: Val::Px(56.0),
+                                height: Val::Px(40.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            image: UiImage::new(assets.button_pause.clone()),
+                            background_color: Color::WHITE.into(),
+                            ..default()
+                        },
+                        PauseButton,
+                    ))
+                    .with_children(|btn| {
+                        btn.spawn(ImageBundle {
+                            style: Style {
+                                width: Val::Px(18.0),
+                                height: Val::Px(18.0),
+                                ..default()
+                            },
+                            image: UiImage::new(assets.icon_pause.clone()),
+                            ..default()
+                        });
+                    });
+                right
+                    .spawn(NodeBundle {
+                        style: Style {
+                            flex_direction: FlexDirection::Row,
+                            align_items: AlignItems::Center,
+                            column_gap: Val::Px(6.0),
+                            ..default()
+                        },
+                        ..default()
+                    })
+                    .with_children(|row| {
+                        row.spawn(ImageBundle {
+                            style: Style {
+                                width: Val::Px(20.0),
+                                height: Val::Px(20.0),
+                                ..default()
+                            },
+                            image: UiImage::new(assets.icon_heart.clone()),
+                            ..default()
+                        });
+                        row.spawn(ImageBundle {
+                            style: Style {
+                                width: Val::Px(16.0),
+                                height: Val::Px(16.0),
+                                ..default()
+                            },
+                            image: UiImage::new(assets.icon_heart_empty.clone()),
+                            ..default()
+                        });
+                        row.spawn(TextBundle::from_section(
+                            "HORDE",
+                            hud_style(&assets, 14.0, Color::rgb(1.0, 0.45, 0.45)),
+                        ));
+                    });
+                right
+                    .spawn((
+                        ImageBundle {
+                            style: Style {
+                                width: Val::Px(160.0),
+                                height: Val::Px(14.0),
+                                ..default()
+                            },
+                            image: UiImage::new(assets.bar.clone()),
+                            ..default()
+                        },
+                        nine_slice(),
+                    ))
+                    .with_children(|meter| {
+                        meter.spawn((
+                            NodeBundle {
+                                style: Style {
+                                    width: Val::Percent(0.0),
+                                    height: Val::Percent(100.0),
+                                    ..default()
+                                },
+                                background_color: Color::rgba(1.0, 0.2, 0.28, 0.85).into(),
+                                ..default()
+                            },
+                            ThreatFill,
+                        ));
+                    });
+            });
+        });
+
+    commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(16.0),
+                    bottom: Val::Px(14.0),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    row_gap: Val::Px(2.0),
+                    ..default()
+                },
+                ..default()
+            },
+            OnGameScreen,
+        ))
+        .with_children(|compass| {
+            compass.spawn(ImageBundle {
+                style: Style {
+                    width: Val::Px(18.0),
+                    height: Val::Px(18.0),
+                    ..default()
+                },
+                image: UiImage::new(assets.icon_arrow_up.clone()),
+                background_color: NEON_CYAN.into(),
+                ..default()
+            });
+            compass
+                .spawn(NodeBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(4.0),
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|row| {
                     row.spawn(ImageBundle {
                         style: Style {
                             width: Val::Px(18.0),
                             height: Val::Px(18.0),
                             ..default()
                         },
-                        image: UiImage::new(assets.icon_heart_empty.clone()),
+                        image: UiImage::new(assets.icon_arrow_left.clone()),
+                        background_color: NEON_CYAN.into(),
                         ..default()
                     });
                     row.spawn(TextBundle::from_section(
-                        "HORDE",
-                        hud_style(&assets, 16.0, Color::rgb(1.0, 0.45, 0.45)),
+                        "SWIPE",
+                        hud_style(&assets, 12.0, Color::rgb(0.78, 0.86, 1.0)),
                     ));
-                });
-            parent
-                .spawn((
-                    ImageBundle {
+                    row.spawn(ImageBundle {
                         style: Style {
-                            width: Val::Percent(100.0),
-                            height: Val::Px(16.0),
+                            width: Val::Px(18.0),
+                            height: Val::Px(18.0),
                             ..default()
                         },
-                        image: UiImage::new(assets.bar.clone()),
+                        image: UiImage::new(assets.icon_arrow_right.clone()),
+                        background_color: NEON_CYAN.into(),
                         ..default()
-                    },
-                    nine_slice(),
-                ))
-                .with_children(|bar| {
-                    bar.spawn((
-                        NodeBundle {
-                            style: Style {
-                                width: Val::Percent(0.0),
-                                height: Val::Percent(100.0),
-                                ..default()
-                            },
-                            background_color: Color::rgba(1.0, 0.2, 0.28, 0.85).into(),
-                            ..default()
-                        },
-                        ThreatFill,
-                    ));
+                    });
                 });
+            compass.spawn(ImageBundle {
+                style: Style {
+                    width: Val::Px(18.0),
+                    height: Val::Px(18.0),
+                    ..default()
+                },
+                image: UiImage::new(assets.icon_arrow_down.clone()),
+                background_color: NEON_CYAN.into(),
+                ..default()
+            });
         });
 }
 
@@ -980,6 +1164,29 @@ fn setup_game_over_screen(mut commands: Commands, last: Res<LastRun>, assets: Re
             OnGameOverMenu,
         ))
         .with_children(|parent| {
+            parent
+                .spawn((
+                    ImageBundle {
+                        style: Style {
+                            width: Val::Px(360.0),
+                            height: Val::Px(70.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            margin: UiRect::bottom(Val::Px(12.0)),
+                            ..default()
+                        },
+                        image: UiImage::new(assets.banner_wide.clone()),
+                        background_color: Color::WHITE.into(),
+                        ..default()
+                    },
+                    nine_slice(),
+                ))
+                .with_children(|banner| {
+                    banner.spawn(TextBundle::from_section(
+                        format!("{}m", (last.distance / 10.0) as u64),
+                        title_style(&assets, 36.0, Color::rgb(0.22, 0.12, 0.06)),
+                    ));
+                });
             parent
                 .spawn((
                     ImageBundle {

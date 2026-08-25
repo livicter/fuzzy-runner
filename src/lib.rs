@@ -216,6 +216,23 @@ pub struct ParticleBurst {
 pub struct ThreatFill;
 
 #[derive(Component)]
+pub struct Decor;
+
+#[derive(Component)]
+pub struct CoinSpin {
+    pub timer: Timer,
+    pub frame: usize,
+}
+
+#[derive(Component)]
+pub struct DustPuff {
+    pub timer: Timer,
+}
+
+#[derive(Component)]
+pub struct PauseButton;
+
+#[derive(Component)]
 pub struct OnGameScreen;
 
 #[derive(Component)]

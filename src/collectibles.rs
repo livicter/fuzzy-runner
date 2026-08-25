@@ -2,8 +2,8 @@ use crate::assets::GameAssets;
 use bevy::prelude::*;
 use fuzzy_runner::{
     aabb_overlap, award_coins, lane_from_blend, player_collision_pos, player_hitbox, Bob, Coin,
-    CoinCollected, FloatingPopup, GameState, OnGameScreen, ParticleBurst, Player, PowerUp,
-    PowerUpCollected, RunStats, MAGNET_RADIUS, NEON_GOLD,
+    CoinCollected, CoinSpin, FloatingPopup, GameState, OnGameScreen, ParticleBurst, Player,
+    PowerUp, PowerUpCollected, RunStats, MAGNET_RADIUS, NEON_GOLD,
 };
 use std::f32::consts::TAU;
 
@@ -17,6 +17,7 @@ impl Plugin for CollectiblesPlugin {
                 Update,
                 (
                     bob_pickups,
+                    spin_coins,
                     attract_coins,
                     collect_coins,
                     collect_power_ups,
@@ -39,6 +40,20 @@ fn bob_pickups(time: Res<Time>, stats: Res<RunStats>, mut query: Query<(&mut Tra
         let pulse = 0.82 + 0.18 * (t * 5.0 + bob.phase).sin().abs();
         transform.scale.x = pulse;
         transform.scale.y = 1.0;
+    }
+}
+
+fn spin_coins(
+    time: Res<Time>,
+    assets: Res<GameAssets>,
+    mut query: Query<(&mut Handle<Image>, &mut CoinSpin), With<Coin>>,
+) {
+    for (mut texture, mut spin) in &mut query {
+        spin.timer.tick(time.delta());
+        if spin.timer.just_finished() {
+            spin.frame = (spin.frame + 1) % 3;
+            *texture = assets.coin_frame(spin.frame);
+        }
     }
 }
 
