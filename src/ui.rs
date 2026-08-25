@@ -1,9 +1,11 @@
+use crate::assets::GameAssets;
 use bevy::prelude::*;
+use bevy::sprite::{BorderRect, ImageScaleMode, SliceScaleMode, TextureSlicer};
 use fuzzy_runner::{
     despawn_screen, CoinText, DeathEvent, Difficulty, DistanceText, GameConfig, GameState,
     HighScores, LastRun, OnGameOverMenu, OnGameScreen, OnMainMenu, OnPauseMenu, OnSettingsMenu,
-    Player, PowerUpCollected, RunStats, ScoreText, SettingsOrigin, StatusText, NEON_CYAN,
-    NEON_GOLD, NEON_LIME, NEON_MAGENTA,
+    Player, PowerUpCollected, RunStats, ScoreText, SettingsOrigin, StatusText, ThreatFill,
+    NEON_CYAN, NEON_GOLD, NEON_LIME, NEON_MAGENTA,
 };
 
 #[derive(Component)]
@@ -23,6 +25,9 @@ enum SettingsButtonAction {
 
 #[derive(Component)]
 struct DifficultyLabel;
+
+#[derive(Component)]
+struct DifficultyChip(Difficulty);
 
 #[derive(Component)]
 struct MenuButton;
@@ -56,6 +61,7 @@ impl Plugin for UiPlugin {
                     handle_settings_menu_actions.run_if(in_state(GameState::SettingsMenu)),
                     handle_menu_button_actions.run_if(in_button_menu_state),
                     update_difficulty_label.run_if(in_state(GameState::SettingsMenu)),
+                    paint_difficulty_chips.run_if(in_state(GameState::SettingsMenu)),
                     update_hud.run_if(in_state(GameState::Playing)),
                     show_power_up_status,
                     paint_menu_buttons,
@@ -189,60 +195,304 @@ fn restart_from_keyboard(
     }
 }
 
-fn neon_button_style() -> Style {
-    Style {
-        width: Val::Px(280.0),
-        height: Val::Px(56.0),
-        margin: UiRect::all(Val::Px(8.0)),
-        justify_content: JustifyContent::Center,
-        align_items: AlignItems::Center,
-        border: UiRect::all(Val::Px(2.0)),
-        ..default()
-    }
-}
-
-fn heading_style() -> TextStyle {
+fn title_style(assets: &GameAssets, size: f32, color: Color) -> TextStyle {
     TextStyle {
-        font_size: 64.0,
-        color: NEON_CYAN,
-        ..default()
+        font: assets.font_title.clone(),
+        font_size: size,
+        color,
     }
 }
 
-fn body_style() -> TextStyle {
+fn body_style(assets: &GameAssets, size: f32, color: Color) -> TextStyle {
     TextStyle {
-        font_size: 22.0,
-        color: Color::rgb(0.86, 0.90, 1.0),
-        ..default()
+        font: assets.font_body.clone(),
+        font_size: size,
+        color,
     }
 }
 
-fn button_text_style() -> TextStyle {
+fn hud_style(assets: &GameAssets, size: f32, color: Color) -> TextStyle {
     TextStyle {
-        font_size: 28.0,
-        color: Color::WHITE,
-        ..default()
+        font: assets.font_hud.clone(),
+        font_size: size,
+        color,
     }
 }
 
-fn spawn_menu_button(parent: &mut ChildBuilder, action: MenuButtonAction, label: &str) {
+fn nine_slice() -> ImageScaleMode {
+    ImageScaleMode::Sliced(TextureSlicer {
+        border: BorderRect::square(18.0),
+        center_scale_mode: SliceScaleMode::Stretch,
+        sides_scale_mode: SliceScaleMode::Stretch,
+        max_corner_scale: 1.0,
+    })
+}
+
+fn overlay_root(marker: impl Bundle) -> (NodeBundle, impl Bundle) {
+    (
+        NodeBundle {
+            style: Style {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                flex_direction: FlexDirection::Column,
+                ..default()
+            },
+            background_color: Color::rgba(0.02, 0.0, 0.08, 0.48).into(),
+            ..default()
+        },
+        marker,
+    )
+}
+
+fn spawn_image_button(
+    parent: &mut ChildBuilder,
+    assets: &GameAssets,
+    image: Handle<Image>,
+    icon: Handle<Image>,
+    label: &str,
+    action: impl Bundle,
+    is_menu: bool,
+) {
+    let mut button = parent.spawn((
+        ButtonBundle {
+            style: Style {
+                width: Val::Px(320.0),
+                height: Val::Px(68.0),
+                margin: UiRect::vertical(Val::Px(7.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(12.0),
+                ..default()
+            },
+            image: UiImage::new(image),
+            background_color: Color::WHITE.into(),
+            ..default()
+        },
+        action,
+    ));
+    if is_menu {
+        button.insert(MenuButton);
+    }
+    button.with_children(|parent| {
+        parent.spawn(ImageBundle {
+            style: Style {
+                width: Val::Px(28.0),
+                height: Val::Px(28.0),
+                ..default()
+            },
+            image: UiImage::new(icon),
+            ..default()
+        });
+        parent.spawn(TextBundle::from_section(
+            label,
+            body_style(assets, 26.0, Color::WHITE),
+        ));
+    });
+}
+
+fn spawn_icon_label(
+    parent: &mut ChildBuilder,
+    assets: &GameAssets,
+    icon: Handle<Image>,
+    label: impl Into<String>,
+    color: Color,
+) {
     parent
-        .spawn((
-            ButtonBundle {
-                style: neon_button_style(),
-                background_color: Color::rgb(0.07, 0.08, 0.16).into(),
-                border_color: BorderColor(NEON_CYAN),
+        .spawn(NodeBundle {
+            style: Style {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                margin: UiRect::vertical(Val::Px(3.0)),
                 ..default()
             },
-            action,
-            MenuButton,
-        ))
-        .with_children(|parent| {
-            parent.spawn(TextBundle::from_section(label, button_text_style()));
+            ..default()
+        })
+        .with_children(|row| {
+            row.spawn(ImageBundle {
+                style: Style {
+                    width: Val::Px(26.0),
+                    height: Val::Px(26.0),
+                    ..default()
+                },
+                image: UiImage::new(icon),
+                ..default()
+            });
+            row.spawn(TextBundle::from_section(
+                label.into(),
+                hud_style(assets, 22.0, color),
+            ));
         });
 }
 
-fn setup_main_menu(mut commands: Commands, highs: Res<HighScores>) {
+fn spawn_control_chip(
+    parent: &mut ChildBuilder,
+    assets: &GameAssets,
+    icon: Handle<Image>,
+    text: &str,
+) {
+    parent
+        .spawn(NodeBundle {
+            style: Style {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                margin: UiRect::horizontal(Val::Px(10.0)),
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|row| {
+            row.spawn(ImageBundle {
+                style: Style {
+                    width: Val::Px(22.0),
+                    height: Val::Px(22.0),
+                    ..default()
+                },
+                image: UiImage::new(icon),
+                background_color: NEON_CYAN.into(),
+                ..default()
+            });
+            row.spawn(TextBundle::from_section(
+                text,
+                hud_style(assets, 16.0, Color::rgb(0.82, 0.88, 1.0)),
+            ));
+        });
+}
+
+fn setup_main_menu(mut commands: Commands, highs: Res<HighScores>, assets: Res<GameAssets>) {
+    commands
+        .spawn(overlay_root(OnMainMenu))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    ImageBundle {
+                        style: Style {
+                            width: Val::Px(680.0),
+                            max_width: Val::Percent(92.0),
+                            padding: UiRect::axes(Val::Px(36.0), Val::Px(28.0)),
+                            align_items: AlignItems::Center,
+                            flex_direction: FlexDirection::Column,
+                            ..default()
+                        },
+                        image: UiImage::new(assets.panel_glass.clone()),
+                        ..default()
+                    },
+                    nine_slice(),
+                ))
+                .with_children(|panel| {
+                    panel.spawn(
+                        TextBundle::from_section(
+                            "CYBER TEMPLE",
+                            title_style(&assets, 54.0, NEON_CYAN),
+                        )
+                        .with_style(Style {
+                            margin: UiRect::bottom(Val::Px(2.0)),
+                            ..default()
+                        }),
+                    );
+                    panel.spawn(
+                        TextBundle::from_section(
+                            "NEON ROOFTOP RUN",
+                            body_style(&assets, 22.0, NEON_MAGENTA),
+                        )
+                        .with_style(Style {
+                            margin: UiRect::bottom(Val::Px(16.0)),
+                            ..default()
+                        }),
+                    );
+
+                    panel
+                        .spawn(NodeBundle {
+                            style: Style {
+                                flex_direction: FlexDirection::Row,
+                                column_gap: Val::Px(22.0),
+                                margin: UiRect::bottom(Val::Px(18.0)),
+                                ..default()
+                            },
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            spawn_icon_label(
+                                row,
+                                &assets,
+                                assets.icon_trophy.clone(),
+                                format!("{}", highs.score),
+                                NEON_GOLD,
+                            );
+                            spawn_icon_label(
+                                row,
+                                &assets,
+                                assets.icon_star.clone(),
+                                format!("{}m", (highs.distance / 10.0) as u64),
+                                NEON_CYAN,
+                            );
+                            spawn_icon_label(
+                                row,
+                                &assets,
+                                assets.icon_coin.clone(),
+                                format!("{}", highs.coins),
+                                NEON_GOLD,
+                            );
+                        });
+
+                    spawn_image_button(
+                        panel,
+                        &assets,
+                        assets.button_blue.clone(),
+                        assets.icon_play.clone(),
+                        "RUN",
+                        MenuButtonAction::Play,
+                        true,
+                    );
+                    spawn_image_button(
+                        panel,
+                        &assets,
+                        assets.button.clone(),
+                        assets.icon_gear.clone(),
+                        "SETTINGS",
+                        MenuButtonAction::Settings,
+                        true,
+                    );
+
+                    panel
+                        .spawn(NodeBundle {
+                            style: Style {
+                                flex_direction: FlexDirection::Row,
+                                margin: UiRect::top(Val::Px(18.0)),
+                                ..default()
+                            },
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            spawn_control_chip(row, &assets, assets.icon_info.clone(), "SWIPE");
+                            spawn_control_chip(
+                                row,
+                                &assets,
+                                assets.icon_arrow_left.clone(),
+                                "LANE",
+                            );
+                            spawn_control_chip(
+                                row,
+                                &assets,
+                                assets.icon_arrow_right.clone(),
+                                "LANE",
+                            );
+                            spawn_control_chip(row, &assets, assets.icon_arrow_up.clone(), "JUMP");
+                            spawn_control_chip(
+                                row,
+                                &assets,
+                                assets.icon_arrow_down.clone(),
+                                "SLIDE",
+                            );
+                        });
+                });
+        });
+}
+
+fn setup_settings_menu(mut commands: Commands, config: Res<GameConfig>, assets: Res<GameAssets>) {
     commands
         .spawn((
             NodeBundle {
@@ -254,168 +504,102 @@ fn setup_main_menu(mut commands: Commands, highs: Res<HighScores>) {
                     flex_direction: FlexDirection::Column,
                     ..default()
                 },
-                background_color: Color::rgba(0.02, 0.0, 0.08, 0.42).into(),
-                ..default()
-            },
-            OnMainMenu,
-        ))
-        .with_children(|parent| {
-            parent.spawn(
-                TextBundle::from_section("CYBER TEMPLE", heading_style())
-                    .with_style(Style {
-                        margin: UiRect::bottom(Val::Px(4.0)),
-                        ..default()
-                    }),
-            );
-            parent.spawn(
-                TextBundle::from_section(
-                    "NEON ROOFTOP RUN",
-                    TextStyle {
-                        font_size: 28.0,
-                        color: NEON_MAGENTA,
-                        ..default()
-                    },
-                )
-                .with_style(Style {
-                    margin: UiRect::bottom(Val::Px(18.0)),
-                    ..default()
-                }),
-            );
-            parent.spawn(
-                TextBundle::from_section(
-                    format!(
-                        "BEST  {}    {}m    {} coins",
-                        highs.score,
-                        (highs.distance / 10.0) as u64,
-                        highs.coins
-                    ),
-                    TextStyle {
-                        font_size: 22.0,
-                        color: NEON_GOLD,
-                        ..default()
-                    },
-                )
-                .with_style(Style {
-                    margin: UiRect::bottom(Val::Px(20.0)),
-                    ..default()
-                }),
-            );
-
-            spawn_menu_button(parent, MenuButtonAction::Play, "RUN");
-            spawn_menu_button(parent, MenuButtonAction::Settings, "SETTINGS");
-
-            parent.spawn(
-                TextBundle::from_section(
-                    "AUTO-RUN   A/D lanes   W jump   S slide   ESC pause\nSwipe the mouse or a finger the same way",
-                    TextStyle {
-                        font_size: 18.0,
-                        color: Color::rgb(0.75, 0.8, 0.95),
-                        ..default()
-                    },
-                )
-                .with_style(Style {
-                    margin: UiRect::top(Val::Px(22.0)),
-                    ..default()
-                }),
-            );
-        });
-}
-
-fn setup_settings_menu(mut commands: Commands, config: Res<GameConfig>) {
-    let chip_style = Style {
-        width: Val::Px(140.0),
-        height: Val::Px(48.0),
-        margin: UiRect::horizontal(Val::Px(8.0)),
-        justify_content: JustifyContent::Center,
-        align_items: AlignItems::Center,
-        border: UiRect::all(Val::Px(2.0)),
-        ..default()
-    };
-
-    commands
-        .spawn((
-            NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Center,
-                    flex_direction: FlexDirection::Column,
-                    ..default()
-                },
-                background_color: Color::rgba(0.0, 0.0, 0.0, 0.82).into(),
+                background_color: Color::rgba(0.0, 0.0, 0.0, 0.78).into(),
                 ..default()
             },
             OnSettingsMenu,
         ))
         .with_children(|parent| {
-            parent.spawn((
-                TextBundle::from_section(
-                    format!("DIFFICULTY: {}", config.difficulty.label()),
-                    heading_style(),
-                ),
-                DifficultyLabel,
-            ));
-            parent.spawn(
-                TextBundle::from_section(
-                    "Speed, obstacle density, and how fast the horde closes in.",
-                    body_style(),
-                )
-                .with_style(Style {
-                    margin: UiRect::vertical(Val::Px(18.0)),
-                    ..default()
-                }),
-            );
-
-            parent
-                .spawn(NodeBundle {
-                    style: Style {
-                        flex_direction: FlexDirection::Row,
-                        margin: UiRect::bottom(Val::Px(24.0)),
-                        ..default()
-                    },
-                    ..default()
-                })
-                .with_children(|parent| {
-                    for difficulty in [Difficulty::Easy, Difficulty::Normal, Difficulty::Hard] {
-                        parent
-                            .spawn((
-                                ButtonBundle {
-                                    style: chip_style.clone(),
-                                    background_color: Color::rgb(0.07, 0.08, 0.16).into(),
-                                    border_color: BorderColor(NEON_CYAN),
-                                    ..default()
-                                },
-                                SettingsButtonAction::SetDifficulty(difficulty),
-                                MenuButton,
-                            ))
-                            .with_children(|parent| {
-                                parent.spawn(TextBundle::from_section(
-                                    difficulty.label(),
-                                    button_text_style(),
-                                ));
-                            });
-                    }
-                });
-
             parent
                 .spawn((
-                    ButtonBundle {
-                        style: neon_button_style(),
-                        background_color: Color::rgb(0.07, 0.08, 0.16).into(),
-                        border_color: BorderColor(NEON_MAGENTA),
+                    ImageBundle {
+                        style: Style {
+                            width: Val::Px(680.0),
+                            max_width: Val::Percent(92.0),
+                            padding: UiRect::all(Val::Px(32.0)),
+                            align_items: AlignItems::Center,
+                            flex_direction: FlexDirection::Column,
+                            ..default()
+                        },
+                        image: UiImage::new(assets.panel_glass.clone()),
                         ..default()
                     },
-                    SettingsButtonAction::Back,
-                    MenuButton,
+                    nine_slice(),
                 ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section("BACK", button_text_style()));
+                .with_children(|panel| {
+                    panel.spawn((
+                        TextBundle::from_section(
+                            format!("DIFFICULTY: {}", config.difficulty.label()),
+                            title_style(&assets, 36.0, NEON_CYAN),
+                        ),
+                        DifficultyLabel,
+                    ));
+                    panel.spawn(
+                        TextBundle::from_section(
+                            "Speed, density, and how fast the horde closes in.",
+                            body_style(&assets, 18.0, Color::rgb(0.86, 0.9, 1.0)),
+                        )
+                        .with_style(Style {
+                            margin: UiRect::vertical(Val::Px(16.0)),
+                            ..default()
+                        }),
+                    );
+
+                    panel
+                        .spawn(NodeBundle {
+                            style: Style {
+                                flex_direction: FlexDirection::Row,
+                                column_gap: Val::Px(12.0),
+                                margin: UiRect::bottom(Val::Px(20.0)),
+                                ..default()
+                            },
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            for (difficulty, image) in [
+                                (Difficulty::Easy, assets.button_green.clone()),
+                                (Difficulty::Normal, assets.button_yellow.clone()),
+                                (Difficulty::Hard, assets.button_red.clone()),
+                            ] {
+                                row.spawn((
+                                    ButtonBundle {
+                                        style: Style {
+                                            width: Val::Px(150.0),
+                                            height: Val::Px(56.0),
+                                            justify_content: JustifyContent::Center,
+                                            align_items: AlignItems::Center,
+                                            ..default()
+                                        },
+                                        image: UiImage::new(image),
+                                        background_color: Color::WHITE.into(),
+                                        ..default()
+                                    },
+                                    SettingsButtonAction::SetDifficulty(difficulty),
+                                    DifficultyChip(difficulty),
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn(TextBundle::from_section(
+                                        difficulty.label(),
+                                        body_style(&assets, 20.0, Color::WHITE),
+                                    ));
+                                });
+                            }
+                        });
+
+                    spawn_image_button(
+                        panel,
+                        &assets,
+                        assets.button.clone(),
+                        assets.icon_home.clone(),
+                        "BACK",
+                        SettingsButtonAction::Back,
+                        false,
+                    );
                 });
         });
 }
 
-fn setup_pause_menu(mut commands: Commands) {
+fn setup_pause_menu(mut commands: Commands, assets: Res<GameAssets>) {
     commands
         .spawn((
             NodeBundle {
@@ -433,84 +617,259 @@ fn setup_pause_menu(mut commands: Commands) {
             OnPauseMenu,
         ))
         .with_children(|parent| {
-            parent.spawn(
-                TextBundle::from_section("PAUSED", heading_style()).with_style(Style {
-                    margin: UiRect::bottom(Val::Px(16.0)),
-                    ..default()
-                }),
-            );
-            spawn_menu_button(parent, MenuButtonAction::Resume, "RESUME");
-            spawn_menu_button(parent, MenuButtonAction::Reset, "NEW RUN");
-            spawn_menu_button(parent, MenuButtonAction::Settings, "SETTINGS");
-            spawn_menu_button(parent, MenuButtonAction::BackToMenu, "MENU");
+            parent
+                .spawn((
+                    ImageBundle {
+                        style: Style {
+                            width: Val::Px(460.0),
+                            padding: UiRect::all(Val::Px(28.0)),
+                            align_items: AlignItems::Center,
+                            flex_direction: FlexDirection::Column,
+                            ..default()
+                        },
+                        image: UiImage::new(assets.panel_glass.clone()),
+                        ..default()
+                    },
+                    nine_slice(),
+                ))
+                .with_children(|panel| {
+                    panel
+                        .spawn(NodeBundle {
+                            style: Style {
+                                flex_direction: FlexDirection::Row,
+                                align_items: AlignItems::Center,
+                                column_gap: Val::Px(10.0),
+                                margin: UiRect::bottom(Val::Px(12.0)),
+                                ..default()
+                            },
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            row.spawn(ImageBundle {
+                                style: Style {
+                                    width: Val::Px(32.0),
+                                    height: Val::Px(32.0),
+                                    ..default()
+                                },
+                                image: UiImage::new(assets.icon_pause.clone()),
+                                ..default()
+                            });
+                            row.spawn(TextBundle::from_section(
+                                "PAUSED",
+                                title_style(&assets, 40.0, NEON_CYAN),
+                            ));
+                        });
+                    spawn_image_button(
+                        panel,
+                        &assets,
+                        assets.button_blue.clone(),
+                        assets.icon_play.clone(),
+                        "RESUME",
+                        MenuButtonAction::Resume,
+                        true,
+                    );
+                    spawn_image_button(
+                        panel,
+                        &assets,
+                        assets.button.clone(),
+                        assets.icon_star.clone(),
+                        "NEW RUN",
+                        MenuButtonAction::Reset,
+                        true,
+                    );
+                    spawn_image_button(
+                        panel,
+                        &assets,
+                        assets.button.clone(),
+                        assets.icon_gear.clone(),
+                        "SETTINGS",
+                        MenuButtonAction::Settings,
+                        true,
+                    );
+                    spawn_image_button(
+                        panel,
+                        &assets,
+                        assets.button.clone(),
+                        assets.icon_home.clone(),
+                        "MENU",
+                        MenuButtonAction::BackToMenu,
+                        true,
+                    );
+                });
         });
 }
 
-fn setup_game_ui(mut commands: Commands, existing: Query<Entity, With<ScoreText>>) {
+fn hud_stat_row(
+    parent: &mut ChildBuilder,
+    assets: &GameAssets,
+    icon: Handle<Image>,
+    value: &str,
+    color: Color,
+    marker: impl Bundle,
+) {
+    parent
+        .spawn(NodeBundle {
+            style: Style {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|row| {
+            row.spawn(ImageBundle {
+                style: Style {
+                    width: Val::Px(24.0),
+                    height: Val::Px(24.0),
+                    ..default()
+                },
+                image: UiImage::new(icon),
+                ..default()
+            });
+            row.spawn((
+                TextBundle::from_section(value, hud_style(assets, 20.0, color)),
+                marker,
+            ));
+        });
+}
+
+fn setup_game_ui(
+    mut commands: Commands,
+    existing: Query<Entity, With<ScoreText>>,
+    assets: Res<GameAssets>,
+) {
     if existing.iter().next().is_some() {
         return;
     }
 
     commands
         .spawn((
-            NodeBundle {
+            ImageBundle {
                 style: Style {
                     position_type: PositionType::Absolute,
-                    left: Val::Px(24.0),
-                    top: Val::Px(18.0),
+                    left: Val::Px(16.0),
+                    top: Val::Px(14.0),
+                    padding: UiRect::axes(Val::Px(16.0), Val::Px(12.0)),
                     flex_direction: FlexDirection::Column,
                     row_gap: Val::Px(4.0),
+                    min_width: Val::Px(220.0),
                     ..default()
                 },
+                image: UiImage::new(assets.panel_pixel.clone()),
                 ..default()
             },
+            nine_slice(),
             OnGameScreen,
         ))
         .with_children(|parent| {
             parent.spawn((
-                TextBundle::from_section(
-                    "SCORE 0",
-                    TextStyle {
-                        font_size: 36.0,
-                        color: Color::WHITE,
-                        ..default()
-                    },
-                ),
+                TextBundle::from_section("SCORE 0", hud_style(&assets, 28.0, Color::WHITE)),
                 ScoreText,
             ));
-            parent.spawn((
-                TextBundle::from_section(
-                    "0m",
-                    TextStyle {
-                        font_size: 24.0,
-                        color: NEON_CYAN,
-                        ..default()
-                    },
-                ),
+            hud_stat_row(
+                parent,
+                &assets,
+                assets.icon_star.clone(),
+                "0m",
+                NEON_CYAN,
                 DistanceText,
-            ));
-            parent.spawn((
-                TextBundle::from_section(
-                    "COINS 0",
-                    TextStyle {
-                        font_size: 24.0,
-                        color: NEON_GOLD,
-                        ..default()
-                    },
-                ),
+            );
+            hud_stat_row(
+                parent,
+                &assets,
+                assets.icon_coin.clone(),
+                "0",
+                NEON_GOLD,
                 CoinText,
-            ));
+            );
             parent.spawn((
-                TextBundle::from_section(
-                    "",
-                    TextStyle {
-                        font_size: 20.0,
-                        color: NEON_LIME,
-                        ..default()
-                    },
-                ),
+                TextBundle::from_section("", hud_style(&assets, 16.0, NEON_LIME)),
                 StatusText,
             ));
+        });
+
+    commands
+        .spawn((
+            ImageBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(16.0),
+                    top: Val::Px(14.0),
+                    width: Val::Px(220.0),
+                    padding: UiRect::all(Val::Px(12.0)),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(6.0),
+                    ..default()
+                },
+                image: UiImage::new(assets.panel_pixel.clone()),
+                ..default()
+            },
+            nine_slice(),
+            OnGameScreen,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn(NodeBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(8.0),
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|row| {
+                    row.spawn(ImageBundle {
+                        style: Style {
+                            width: Val::Px(22.0),
+                            height: Val::Px(22.0),
+                            ..default()
+                        },
+                        image: UiImage::new(assets.icon_heart.clone()),
+                        ..default()
+                    });
+                    row.spawn(ImageBundle {
+                        style: Style {
+                            width: Val::Px(18.0),
+                            height: Val::Px(18.0),
+                            ..default()
+                        },
+                        image: UiImage::new(assets.icon_heart_empty.clone()),
+                        ..default()
+                    });
+                    row.spawn(TextBundle::from_section(
+                        "HORDE",
+                        hud_style(&assets, 16.0, Color::rgb(1.0, 0.45, 0.45)),
+                    ));
+                });
+            parent
+                .spawn((
+                    ImageBundle {
+                        style: Style {
+                            width: Val::Percent(100.0),
+                            height: Val::Px(16.0),
+                            ..default()
+                        },
+                        image: UiImage::new(assets.bar.clone()),
+                        ..default()
+                    },
+                    nine_slice(),
+                ))
+                .with_children(|bar| {
+                    bar.spawn((
+                        NodeBundle {
+                            style: Style {
+                                width: Val::Percent(0.0),
+                                height: Val::Percent(100.0),
+                                ..default()
+                            },
+                            background_color: Color::rgba(1.0, 0.2, 0.28, 0.85).into(),
+                            ..default()
+                        },
+                        ThreatFill,
+                    ));
+                });
         });
 }
 
@@ -552,6 +911,7 @@ fn update_hud(
             Without<CoinText>,
         ),
     >,
+    mut threat_query: Query<&mut Style, With<ThreatFill>>,
     player_query: Query<&Player>,
 ) {
     if let Ok(mut text) = score_query.get_single_mut() {
@@ -561,7 +921,10 @@ fn update_hud(
         text.sections[0].value = format!("{}m", (stats.distance / 10.0) as u64);
     }
     if let Ok(mut text) = coin_query.get_single_mut() {
-        text.sections[0].value = format!("COINS {}", stats.coins);
+        text.sections[0].value = format!("{}", stats.coins);
+    }
+    if let Ok(mut fill) = threat_query.get_single_mut() {
+        fill.width = Val::Percent((stats.threat * 100.0).clamp(0.0, 100.0));
     }
     if let Ok(mut text) = status_query.get_single_mut() {
         let mut parts = Vec::new();
@@ -582,9 +945,9 @@ fn update_hud(
             parts.push("SHIELD".to_string());
         }
         if stats.threat > 0.35 {
-            parts.push("HORDE CLOSING".to_string());
+            parts.push("CLOSING IN".to_string());
         }
-        text.sections[0].value = parts.join("   ");
+        text.sections[0].value = parts.join("  ");
     }
 }
 
@@ -599,7 +962,7 @@ fn show_power_up_status(
     }
 }
 
-fn setup_game_over_screen(mut commands: Commands, last: Res<LastRun>) {
+fn setup_game_over_screen(mut commands: Commands, last: Res<LastRun>, assets: Res<GameAssets>) {
     commands
         .spawn((
             NodeBundle {
@@ -611,70 +974,127 @@ fn setup_game_over_screen(mut commands: Commands, last: Res<LastRun>) {
                     flex_direction: FlexDirection::Column,
                     ..default()
                 },
-                background_color: Color::rgba(0.04, 0.0, 0.06, 0.82).into(),
+                background_color: Color::rgba(0.05, 0.0, 0.07, 0.82).into(),
                 ..default()
             },
             OnGameOverMenu,
         ))
         .with_children(|parent| {
-            parent.spawn(
-                TextBundle::from_section(last.reason.headline(), heading_style()).with_style(
-                    Style {
-                        margin: UiRect::bottom(Val::Px(12.0)),
-                        ..default()
-                    },
-                ),
-            );
-            if last.new_high_score {
-                parent.spawn(
-                    TextBundle::from_section(
-                        "NEW HIGH SCORE",
-                        TextStyle {
-                            font_size: 32.0,
-                            color: NEON_GOLD,
+            parent
+                .spawn((
+                    ImageBundle {
+                        style: Style {
+                            width: Val::Px(680.0),
+                            max_width: Val::Percent(94.0),
+                            padding: UiRect::all(Val::Px(32.0)),
+                            align_items: AlignItems::Center,
+                            flex_direction: FlexDirection::Column,
                             ..default()
                         },
-                    )
-                    .with_style(Style {
-                        margin: UiRect::bottom(Val::Px(10.0)),
+                        image: UiImage::new(assets.panel_glass.clone()),
                         ..default()
-                    }),
-                );
-            }
-            parent.spawn(TextBundle::from_section(
-                format!(
-                    "Score {}    {}m    {} coins",
-                    last.score,
-                    (last.distance / 10.0) as u64,
-                    last.coins
-                ),
-                body_style(),
-            ));
-            spawn_menu_button(parent, MenuButtonAction::Reset, "RUN AGAIN");
-            spawn_menu_button(parent, MenuButtonAction::BackToMenu, "MENU");
+                    },
+                    nine_slice(),
+                ))
+                .with_children(|panel| {
+                    panel.spawn(
+                        TextBundle::from_section(
+                            last.reason.headline(),
+                            title_style(&assets, 28.0, NEON_MAGENTA),
+                        )
+                        .with_style(Style {
+                            margin: UiRect::bottom(Val::Px(12.0)),
+                            ..default()
+                        }),
+                    );
+                    if last.new_high_score {
+                        spawn_icon_label(
+                            panel,
+                            &assets,
+                            assets.world_star.clone(),
+                            "NEW HIGH SCORE",
+                            NEON_GOLD,
+                        );
+                    }
+                    panel
+                        .spawn(NodeBundle {
+                            style: Style {
+                                flex_direction: FlexDirection::Row,
+                                column_gap: Val::Px(20.0),
+                                margin: UiRect::vertical(Val::Px(14.0)),
+                                ..default()
+                            },
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            spawn_icon_label(
+                                row,
+                                &assets,
+                                assets.icon_star.clone(),
+                                format!("{}", last.score),
+                                Color::WHITE,
+                            );
+                            spawn_icon_label(
+                                row,
+                                &assets,
+                                assets.icon_trophy.clone(),
+                                format!("{}m", (last.distance / 10.0) as u64),
+                                NEON_CYAN,
+                            );
+                            spawn_icon_label(
+                                row,
+                                &assets,
+                                assets.icon_coin.clone(),
+                                format!("{}", last.coins),
+                                NEON_GOLD,
+                            );
+                        });
+                    spawn_image_button(
+                        panel,
+                        &assets,
+                        assets.button_blue.clone(),
+                        assets.icon_play.clone(),
+                        "RUN AGAIN",
+                        MenuButtonAction::Reset,
+                        true,
+                    );
+                    spawn_image_button(
+                        panel,
+                        &assets,
+                        assets.button.clone(),
+                        assets.icon_home.clone(),
+                        "MENU",
+                        MenuButtonAction::BackToMenu,
+                        true,
+                    );
+                });
         });
 }
 
 fn paint_menu_buttons(
     mut query: Query<
-        (&Interaction, &mut BackgroundColor, &mut BorderColor),
-        (Changed<Interaction>, With<MenuButton>),
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<MenuButton>, With<Button>),
     >,
 ) {
-    for (interaction, mut background, mut border) in &mut query {
-        match interaction {
-            Interaction::Pressed => {
-                *background = Color::rgb(0.0, 0.55, 0.65).into();
-                *border = BorderColor(Color::WHITE);
-            }
-            Interaction::Hovered => {
-                *background = Color::rgb(0.08, 0.22, 0.32).into();
-                *border = BorderColor(NEON_LIME);
-            }
-            Interaction::None => {
-                *background = Color::rgb(0.07, 0.08, 0.16).into();
-                *border = BorderColor(NEON_CYAN);
-            }
-        }
+    for (interaction, mut background) in &mut query {
+        *background = match interaction {
+            Interaction::Pressed => Color::rgb(0.55, 0.9, 1.0).into(),
+            Interaction::Hovered => Color::rgb(0.82, 1.0, 1.0).into(),
+            Interaction::None => Color::WHITE.into(),
+        };
+    }
+}
+
+fn paint_difficulty_chips(
+    config: Res<GameConfig>,
+    mut query: Query<(&DifficultyChip, &mut BackgroundColor)>,
+) {
+    for (chip, mut background) in &mut query {
+        *background = if chip.0 == config.difficulty {
+            Color::WHITE.into()
+        } else {
+            Color::rgba(1.0, 1.0, 1.0, 0.42).into()
+        };
     }
 }

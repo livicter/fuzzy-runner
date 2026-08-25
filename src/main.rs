@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+mod assets;
 mod background;
 mod collectibles;
 mod enemy;
@@ -7,6 +8,7 @@ mod platform;
 mod player;
 mod ui;
 
+use crate::assets::AssetsPlugin;
 use crate::enemy::EnemyPlugin;
 use background::BackgroundPlugin;
 use collectibles::CollectiblesPlugin;
@@ -37,6 +39,7 @@ fn main() {
         .init_resource::<TrackCursor>()
         .insert_resource(GameConfig::default())
         .add_plugins((
+            AssetsPlugin,
             PlayerPlugin,
             PlatformPlugin,
             CollectiblesPlugin,

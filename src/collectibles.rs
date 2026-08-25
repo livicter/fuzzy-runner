@@ -1,9 +1,11 @@
+use crate::assets::GameAssets;
 use bevy::prelude::*;
 use fuzzy_runner::{
-    aabb_overlap, award_coins, lane_from_blend, player_collision_pos, player_hitbox, Coin,
-    CoinCollected, FloatingPopup, GameState, OnGameScreen, Player, PowerUp, PowerUpCollected,
-    RunStats, MAGNET_RADIUS, NEON_GOLD,
+    aabb_overlap, award_coins, lane_from_blend, player_collision_pos, player_hitbox, Bob, Coin,
+    CoinCollected, FloatingPopup, GameState, OnGameScreen, ParticleBurst, Player, PowerUp,
+    PowerUpCollected, RunStats, MAGNET_RADIUS, NEON_GOLD,
 };
+use std::f32::consts::TAU;
 
 pub struct CollectiblesPlugin;
 
@@ -14,15 +16,29 @@ impl Plugin for CollectiblesPlugin {
             .add_systems(
                 Update,
                 (
+                    bob_pickups,
                     attract_coins,
                     collect_coins,
                     collect_power_ups,
-                    spawn_coin_popups,
+                    spawn_coin_feedback,
                     tick_popups,
+                    tick_particles,
                 )
                     .chain()
                     .run_if(in_state(GameState::Playing)),
             );
+    }
+}
+
+fn bob_pickups(time: Res<Time>, stats: Res<RunStats>, mut query: Query<(&mut Transform, &Bob)>) {
+    let t = time.elapsed_seconds();
+    for (mut transform, bob) in &mut query {
+        if !stats.magnet_active() {
+            transform.translation.y = bob.base_y + (t * 3.4 + bob.phase).sin() * 7.0;
+        }
+        let pulse = 0.82 + 0.18 * (t * 5.0 + bob.phase).sin().abs();
+        transform.scale.x = pulse;
+        transform.scale.y = 1.0;
     }
 }
 
@@ -68,7 +84,7 @@ fn collect_coins(
         if !lane_ok && !magnet_grab {
             continue;
         }
-        if aabb_overlap(origin, hitbox, transform.translation, Vec2::splat(20.0)) || magnet_grab {
+        if aabb_overlap(origin, hitbox, transform.translation, Vec2::splat(28.0)) || magnet_grab {
             let award = award_coins(coin.value, stats.multiplier_active());
             stats.coins += award.coins;
             stats.coin_points += award.points;
@@ -98,7 +114,7 @@ fn collect_power_ups(
         if power_up.lane != player.lane {
             continue;
         }
-        if !aabb_overlap(origin, hitbox, transform.translation, Vec2::splat(28.0)) {
+        if !aabb_overlap(origin, hitbox, transform.translation, Vec2::splat(32.0)) {
             continue;
         }
 
@@ -124,30 +140,28 @@ fn collect_power_ups(
     }
 }
 
-fn spawn_coin_popups(
+fn spawn_coin_feedback(
     mut commands: Commands,
     player_query: Query<&Transform, With<Player>>,
     mut events: EventReader<CoinCollected>,
+    assets: Res<GameAssets>,
 ) {
     let Ok(player_transform) = player_query.get_single() else {
         return;
     };
     for event in events.read() {
+        let pos = player_transform.translation + Vec3::new(8.0, 46.0, 8.0);
         commands.spawn((
             Text2dBundle {
                 text: Text::from_section(
                     format!("+{}", event.points),
                     TextStyle {
-                        font_size: 22.0,
+                        font: assets.font_hud.clone(),
+                        font_size: 26.0,
                         color: NEON_GOLD,
-                        ..default()
                     },
                 ),
-                transform: Transform::from_xyz(
-                    player_transform.translation.x + 10.0,
-                    player_transform.translation.y + 50.0,
-                    8.0,
-                ),
+                transform: Transform::from_translation(pos),
                 ..default()
             },
             FloatingPopup {
@@ -155,6 +169,32 @@ fn spawn_coin_popups(
             },
             OnGameScreen,
         ));
+
+        for i in 0..8 {
+            let angle = i as f32 / 8.0 * TAU;
+            let dir = Vec2::new(angle.cos(), angle.sin());
+            commands.spawn((
+                SpriteBundle {
+                    texture: match i % 3 {
+                        0 => assets.particle_star.clone(),
+                        1 => assets.particle_spark.clone(),
+                        _ => assets.particle_circle.clone(),
+                    },
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::splat(16.0)),
+                        color: NEON_GOLD,
+                        ..default()
+                    },
+                    transform: Transform::from_translation(pos),
+                    ..default()
+                },
+                ParticleBurst {
+                    velocity: dir * (120.0 + (i as f32) * 8.0),
+                    timer: Timer::from_seconds(0.38, TimerMode::Once),
+                },
+                OnGameScreen,
+            ));
+        }
     }
 }
 
@@ -171,6 +211,24 @@ fn tick_popups(
             section.style.color.set_a(alpha);
         }
         if popup.timer.finished() {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+}
+
+fn tick_particles(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut Transform, &mut Sprite, &mut ParticleBurst)>,
+) {
+    for (entity, mut transform, mut sprite, mut burst) in &mut query {
+        burst.timer.tick(time.delta());
+        transform.translation.x += burst.velocity.x * time.delta_seconds();
+        transform.translation.y += burst.velocity.y * time.delta_seconds();
+        let fade = 1.0 - burst.timer.fraction();
+        sprite.color.set_a(fade);
+        transform.scale = Vec3::splat(0.6 + fade * 0.6);
+        if burst.timer.finished() {
             commands.entity(entity).despawn_recursive();
         }
     }

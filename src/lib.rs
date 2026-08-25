@@ -196,7 +196,24 @@ pub struct OnMainMenu;
 pub struct OnGameOverMenu;
 
 #[derive(Component)]
-pub struct Platform;
+pub struct Platform {
+    pub size: Vec2,
+}
+
+#[derive(Component)]
+pub struct Bob {
+    pub base_y: f32,
+    pub phase: f32,
+}
+
+#[derive(Component)]
+pub struct ParticleBurst {
+    pub velocity: Vec2,
+    pub timer: Timer,
+}
+
+#[derive(Component)]
+pub struct ThreatFill;
 
 #[derive(Component)]
 pub struct OnGameScreen;

@@ -1,0 +1,98 @@
+use bevy::prelude::*;
+
+#[derive(Resource, Clone)]
+pub struct GameAssets {
+    pub font_title: Handle<Font>,
+    pub font_body: Handle<Font>,
+    pub font_hud: Handle<Font>,
+    pub button: Handle<Image>,
+    pub button_blue: Handle<Image>,
+    pub button_green: Handle<Image>,
+    pub button_yellow: Handle<Image>,
+    pub button_red: Handle<Image>,
+    pub panel_glass: Handle<Image>,
+    pub panel_pixel: Handle<Image>,
+    pub bar: Handle<Image>,
+    pub icon_coin: Handle<Image>,
+    pub icon_trophy: Handle<Image>,
+    pub icon_star: Handle<Image>,
+    pub icon_gear: Handle<Image>,
+    pub icon_play: Handle<Image>,
+    pub icon_home: Handle<Image>,
+    pub icon_pause: Handle<Image>,
+    pub icon_info: Handle<Image>,
+    pub icon_heart: Handle<Image>,
+    pub icon_heart_empty: Handle<Image>,
+    pub icon_arrow_up: Handle<Image>,
+    pub icon_arrow_down: Handle<Image>,
+    pub icon_arrow_left: Handle<Image>,
+    pub icon_arrow_right: Handle<Image>,
+    pub coin: Handle<Image>,
+    pub crate_box: Handle<Image>,
+    pub crate_warn: Handle<Image>,
+    pub crate_boom: Handle<Image>,
+    pub spikes: Handle<Image>,
+    pub gem_blue: Handle<Image>,
+    pub gem_green: Handle<Image>,
+    pub gem_yellow: Handle<Image>,
+    pub gem_red: Handle<Image>,
+    pub world_star: Handle<Image>,
+    pub roof: Handle<Image>,
+    pub wall: Handle<Image>,
+    pub particle_star: Handle<Image>,
+    pub particle_circle: Handle<Image>,
+    pub particle_spark: Handle<Image>,
+}
+
+pub struct AssetsPlugin;
+
+impl Plugin for AssetsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(PreStartup, load_game_assets);
+    }
+}
+
+fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.insert_resource(GameAssets {
+        font_title: asset_server.load("fonts/Orbitron-Bold.ttf"),
+        font_body: asset_server.load("fonts/KenneyFutureNarrow.ttf"),
+        font_hud: asset_server.load("fonts/KenneyMini.ttf"),
+        button: asset_server.load("ui/button.png"),
+        button_blue: asset_server.load("ui/button_blue.png"),
+        button_green: asset_server.load("ui/button_green.png"),
+        button_yellow: asset_server.load("ui/button_yellow.png"),
+        button_red: asset_server.load("ui/button_red.png"),
+        panel_glass: asset_server.load("ui/panel_glass.png"),
+        panel_pixel: asset_server.load("ui/panel_pixel.png"),
+        bar: asset_server.load("ui/bar.png"),
+        icon_coin: asset_server.load("icons/hud_coin.png"),
+        icon_trophy: asset_server.load("icons/trophy.png"),
+        icon_star: asset_server.load("icons/star.png"),
+        icon_gear: asset_server.load("icons/gear.png"),
+        icon_play: asset_server.load("icons/play.png"),
+        icon_home: asset_server.load("icons/home.png"),
+        icon_pause: asset_server.load("icons/pause.png"),
+        icon_info: asset_server.load("icons/info.png"),
+        icon_heart: asset_server.load("icons/heart.png"),
+        icon_heart_empty: asset_server.load("icons/heart_empty.png"),
+        icon_arrow_up: asset_server.load("icons/arrow_up.png"),
+        icon_arrow_down: asset_server.load("icons/arrow_down.png"),
+        icon_arrow_left: asset_server.load("icons/arrow_left.png"),
+        icon_arrow_right: asset_server.load("icons/arrow_right.png"),
+        coin: asset_server.load("world/coin.png"),
+        crate_box: asset_server.load("world/crate.png"),
+        crate_warn: asset_server.load("world/crate_warning.png"),
+        crate_boom: asset_server.load("world/crate_explosive.png"),
+        spikes: asset_server.load("world/spikes.png"),
+        gem_blue: asset_server.load("world/gem_blue.png"),
+        gem_green: asset_server.load("world/gem_green.png"),
+        gem_yellow: asset_server.load("world/gem_yellow.png"),
+        gem_red: asset_server.load("world/gem_red.png"),
+        world_star: asset_server.load("world/star.png"),
+        roof: asset_server.load("world/roof.png"),
+        wall: asset_server.load("world/wall.png"),
+        particle_star: asset_server.load("particles/star.png"),
+        particle_circle: asset_server.load("particles/circle.png"),
+        particle_spark: asset_server.load("particles/spark.png"),
+    });
+}

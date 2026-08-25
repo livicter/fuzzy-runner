@@ -1,10 +1,12 @@
+use crate::assets::GameAssets;
 use bevy::prelude::*;
 use fuzzy_runner::{
-    lane_scale, lane_z, plan_segment, Coin, GameConfig, GameState, Obstacle, ObstacleKind,
+    lane_scale, lane_z, plan_segment, Bob, Coin, GameConfig, GameState, Obstacle, ObstacleKind,
     OnGameScreen, Platform, PlatformQueue, Player, PowerUp, PowerUpKind, RunStats, SegmentPlan,
-    TrackCursor, GROUND_Y, INITIAL_TRACK_END, NEON_CYAN, NEON_GOLD, NEON_LIME, NEON_MAGENTA,
-    NEON_PURPLE, PLATFORM_THICKNESS, ROOF_COLOR, ROOF_EDGE, TRACK_LOOKAHEAD, VIEWPORT_WIDTH,
+    TrackCursor, GROUND_Y, INITIAL_TRACK_END, PLATFORM_THICKNESS, TRACK_LOOKAHEAD, VIEWPORT_WIDTH,
 };
+
+const TILE: f32 = 70.0;
 
 pub struct PlatformPlugin;
 
@@ -22,6 +24,7 @@ fn setup_track(
     mut platform_queue: ResMut<PlatformQueue>,
     mut cursor: ResMut<TrackCursor>,
     platform_query: Query<Entity, With<Platform>>,
+    assets: Res<GameAssets>,
 ) {
     if platform_query.iter().next().is_some() {
         return;
@@ -29,153 +32,220 @@ fn setup_track(
 
     platform_queue.0.clear();
     cursor.next_x = INITIAL_TRACK_END;
-    let first = spawn_platform(&mut commands, Vec2::new(300.0, GROUND_Y), 1200.0);
+    let first = spawn_platform(&mut commands, &assets, Vec2::new(300.0, GROUND_Y), 1200.0);
     platform_queue.0.push_back(first);
 }
 
-pub fn spawn_platform(commands: &mut Commands, position: Vec2, width: f32) -> Entity {
+pub fn spawn_platform(
+    commands: &mut Commands,
+    assets: &GameAssets,
+    position: Vec2,
+    width: f32,
+) -> Entity {
     commands
         .spawn((
-            SpriteBundle {
-                sprite: Sprite {
-                    color: ROOF_COLOR,
-                    ..default()
-                },
-                transform: Transform {
-                    translation: position.extend(0.0),
-                    scale: Vec3::new(width, PLATFORM_THICKNESS, 1.0),
-                    ..default()
-                },
+            SpatialBundle {
+                transform: Transform::from_xyz(position.x, position.y, 0.0),
                 ..default()
             },
-            Platform,
+            Platform {
+                size: Vec2::new(width, PLATFORM_THICKNESS),
+            },
             OnGameScreen,
         ))
         .with_children(|parent| {
-            parent.spawn(SpriteBundle {
-                sprite: Sprite {
-                    color: ROOF_EDGE,
+            let tiles = ((width / TILE).ceil() as i32).max(1);
+            let start_x = -width / 2.0 + TILE / 2.0;
+            for i in 0..tiles {
+                let x = start_x + i as f32 * TILE;
+                parent.spawn(SpriteBundle {
+                    texture: assets.roof.clone(),
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::new(TILE + 1.0, 28.0)),
+                        color: Color::rgb(0.62, 0.88, 1.0),
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(x, 4.0, 0.15),
                     ..default()
-                },
-                transform: Transform {
-                    translation: Vec3::new(0.0, 0.55, 0.1),
-                    scale: Vec3::new(1.0, 0.18, 1.0),
+                });
+                parent.spawn(SpriteBundle {
+                    texture: assets.wall.clone(),
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::new(TILE + 1.0, 210.0)),
+                        color: Color::rgb(0.38, 0.22, 0.55),
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(x, -118.0, -0.2),
                     ..default()
-                },
-                ..default()
-            });
-            parent.spawn(SpriteBundle {
-                sprite: Sprite {
-                    color: Color::rgb(0.07, 0.05, 0.12),
-                    ..default()
-                },
-                transform: Transform {
-                    translation: Vec3::new(0.0, -6.5, -0.2),
-                    scale: Vec3::new(1.0, 12.0, 1.0),
-                    ..default()
-                },
-                ..default()
-            });
+                });
+            }
         })
         .id()
 }
 
-fn spawn_obstacle(commands: &mut Commands, x: f32, kind: ObstacleKind, lane: i32) {
-    let (size, color, y) = match kind {
-        ObstacleKind::LowBarrier => (Vec2::new(42.0, 44.0), NEON_MAGENTA, GROUND_Y + 33.0),
-        ObstacleKind::HighBarrier => (Vec2::new(70.0, 28.0), NEON_CYAN, GROUND_Y + 86.0),
+fn spawn_obstacle(
+    commands: &mut Commands,
+    assets: &GameAssets,
+    x: f32,
+    kind: ObstacleKind,
+    lane: i32,
+) {
+    let (size, texture, y, tint) = match kind {
+        ObstacleKind::LowBarrier => (
+            Vec2::new(52.0, 52.0),
+            assets.crate_box.clone(),
+            GROUND_Y + 36.0,
+            Color::WHITE,
+        ),
+        ObstacleKind::HighBarrier => (
+            Vec2::new(72.0, 36.0),
+            assets.crate_warn.clone(),
+            GROUND_Y + 90.0,
+            Color::WHITE,
+        ),
         ObstacleKind::LaneBlock => (
-            Vec2::new(36.0, 92.0),
-            Color::rgb(1.0, 0.25, 0.25),
-            GROUND_Y + 57.0,
+            Vec2::new(48.0, 70.0),
+            assets.crate_boom.clone(),
+            GROUND_Y + 46.0,
+            Color::WHITE,
         ),
     };
+    let scale = lane_scale(lane);
 
     commands.spawn((
         SpriteBundle {
-            sprite: Sprite { color, ..default() },
-            transform: Transform {
-                translation: Vec3::new(x, y, lane_z(lane)),
-                scale: Vec3::new(size.x, size.y, 1.0) * lane_scale(lane),
+            texture,
+            sprite: Sprite {
+                custom_size: Some(size * scale),
+                color: tint,
                 ..default()
             },
+            transform: Transform::from_xyz(x, y, lane_z(lane)),
             ..default()
         },
         Obstacle { kind, lane, size },
         OnGameScreen,
     ));
+
+    if kind == ObstacleKind::LaneBlock {
+        commands.spawn((
+            SpriteBundle {
+                texture: assets.spikes.clone(),
+                sprite: Sprite {
+                    custom_size: Some(Vec2::new(48.0, 28.0) * scale),
+                    ..default()
+                },
+                transform: Transform::from_xyz(x, GROUND_Y + 18.0, lane_z(lane) + 0.05),
+                ..default()
+            },
+            OnGameScreen,
+        ));
+    }
 }
 
-fn spawn_coin(commands: &mut Commands, x: f32, lane: i32, airborne: bool) {
+fn spawn_coin(commands: &mut Commands, assets: &GameAssets, x: f32, lane: i32, airborne: bool) {
     let y = if airborne {
         GROUND_Y + 110.0
     } else {
-        GROUND_Y + 48.0
+        GROUND_Y + 50.0
     };
+    let scale = lane_scale(lane);
     commands.spawn((
         SpriteBundle {
+            texture: assets.coin.clone(),
             sprite: Sprite {
-                color: NEON_GOLD,
+                custom_size: Some(Vec2::splat(34.0 * scale)),
                 ..default()
             },
-            transform: Transform {
-                translation: Vec3::new(x, y, lane_z(lane) + 0.05),
-                scale: Vec3::splat(16.0 * lane_scale(lane)),
-                ..default()
-            },
+            transform: Transform::from_xyz(x, y, lane_z(lane) + 0.05),
             ..default()
         },
         Coin { value: 1, lane },
+        Bob {
+            base_y: y,
+            phase: x * 0.04,
+        },
         OnGameScreen,
     ));
 }
 
-fn spawn_power_up(commands: &mut Commands, x: f32, lane: i32, kind: PowerUpKind) {
-    let color = match kind {
-        PowerUpKind::Magnet => NEON_PURPLE,
-        PowerUpKind::Shield => NEON_CYAN,
-        PowerUpKind::Multiplier => NEON_GOLD,
-        PowerUpKind::Boost => NEON_LIME,
+fn spawn_power_up(
+    commands: &mut Commands,
+    assets: &GameAssets,
+    x: f32,
+    lane: i32,
+    kind: PowerUpKind,
+) {
+    let (texture, y) = match kind {
+        PowerUpKind::Magnet => (assets.gem_blue.clone(), GROUND_Y + 68.0),
+        PowerUpKind::Shield => (assets.gem_green.clone(), GROUND_Y + 68.0),
+        PowerUpKind::Multiplier => (assets.gem_yellow.clone(), GROUND_Y + 68.0),
+        PowerUpKind::Boost => (assets.gem_red.clone(), GROUND_Y + 68.0),
     };
+    let scale = lane_scale(lane);
     commands.spawn((
         SpriteBundle {
-            sprite: Sprite { color, ..default() },
-            transform: Transform {
-                translation: Vec3::new(x, GROUND_Y + 68.0, lane_z(lane) + 0.08),
-                scale: Vec3::splat(22.0 * lane_scale(lane)),
+            texture,
+            sprite: Sprite {
+                custom_size: Some(Vec2::splat(40.0 * scale)),
                 ..default()
             },
+            transform: Transform::from_xyz(x, y, lane_z(lane) + 0.08),
             ..default()
         },
         PowerUp { kind, lane },
+        Bob {
+            base_y: y,
+            phase: x * 0.05,
+        },
         OnGameScreen,
     ));
 }
 
-fn ensure_platform(commands: &mut Commands, queue: &mut PlatformQueue, start_x: f32, end_x: f32) {
+fn ensure_platform(
+    commands: &mut Commands,
+    assets: &GameAssets,
+    queue: &mut PlatformQueue,
+    start_x: f32,
+    end_x: f32,
+) {
     let width = (end_x - start_x).max(80.0);
     let center = start_x + width / 2.0;
-    let entity = spawn_platform(commands, Vec2::new(center, GROUND_Y), width);
+    let entity = spawn_platform(commands, assets, Vec2::new(center, GROUND_Y), width);
     queue.push_back(entity);
 }
 
 fn spawn_plan(
     commands: &mut Commands,
+    assets: &GameAssets,
     cursor: &mut TrackCursor,
     queue: &mut PlatformQueue,
     plan: SegmentPlan,
 ) {
     match plan {
         SegmentPlan::Safe { length } => {
-            ensure_platform(commands, queue, cursor.next_x, cursor.next_x + length);
+            ensure_platform(
+                commands,
+                assets,
+                queue,
+                cursor.next_x,
+                cursor.next_x + length,
+            );
             cursor.next_x += length;
         }
         SegmentPlan::Coins { lane, count } => {
             let length = 90.0 + count as f32 * 38.0;
-            ensure_platform(commands, queue, cursor.next_x, cursor.next_x + length);
+            ensure_platform(
+                commands,
+                assets,
+                queue,
+                cursor.next_x,
+                cursor.next_x + length,
+            );
             for i in 0..count {
                 spawn_coin(
                     commands,
+                    assets,
                     cursor.next_x + 50.0 + i as f32 * 38.0,
                     lane,
                     false,
@@ -185,10 +255,17 @@ fn spawn_plan(
         }
         SegmentPlan::LowBarriers { lanes } => {
             let length = 260.0;
-            ensure_platform(commands, queue, cursor.next_x, cursor.next_x + length);
+            ensure_platform(
+                commands,
+                assets,
+                queue,
+                cursor.next_x,
+                cursor.next_x + length,
+            );
             for lane in lanes {
                 spawn_obstacle(
                     commands,
+                    assets,
                     cursor.next_x + 150.0,
                     ObstacleKind::LowBarrier,
                     lane,
@@ -198,10 +275,17 @@ fn spawn_plan(
         }
         SegmentPlan::HighBars { lanes } => {
             let length = 260.0;
-            ensure_platform(commands, queue, cursor.next_x, cursor.next_x + length);
+            ensure_platform(
+                commands,
+                assets,
+                queue,
+                cursor.next_x,
+                cursor.next_x + length,
+            );
             for lane in lanes {
                 spawn_obstacle(
                     commands,
+                    assets,
                     cursor.next_x + 150.0,
                     ObstacleKind::HighBarrier,
                     lane,
@@ -214,8 +298,14 @@ fn spawn_plan(
         }
         SegmentPlan::PowerUp { kind, lane } => {
             let length = 240.0;
-            ensure_platform(commands, queue, cursor.next_x, cursor.next_x + length);
-            spawn_power_up(commands, cursor.next_x + 140.0, lane, kind);
+            ensure_platform(
+                commands,
+                assets,
+                queue,
+                cursor.next_x,
+                cursor.next_x + length,
+            );
+            spawn_power_up(commands, assets, cursor.next_x + 140.0, lane, kind);
             cursor.next_x += length;
         }
         SegmentPlan::JumpSet {
@@ -223,9 +313,16 @@ fn spawn_plan(
             coin_lane,
         } => {
             let length = 300.0;
-            ensure_platform(commands, queue, cursor.next_x, cursor.next_x + length);
+            ensure_platform(
+                commands,
+                assets,
+                queue,
+                cursor.next_x,
+                cursor.next_x + length,
+            );
             spawn_obstacle(
                 commands,
+                assets,
                 cursor.next_x + 170.0,
                 ObstacleKind::LowBarrier,
                 obstacle_lane,
@@ -233,6 +330,7 @@ fn spawn_plan(
             for i in 0..4 {
                 spawn_coin(
                     commands,
+                    assets,
                     cursor.next_x + 130.0 + i as f32 * 28.0,
                     coin_lane,
                     true,
@@ -245,9 +343,16 @@ fn spawn_plan(
             coin_lane,
         } => {
             let length = 300.0;
-            ensure_platform(commands, queue, cursor.next_x, cursor.next_x + length);
+            ensure_platform(
+                commands,
+                assets,
+                queue,
+                cursor.next_x,
+                cursor.next_x + length,
+            );
             spawn_obstacle(
                 commands,
+                assets,
                 cursor.next_x + 170.0,
                 ObstacleKind::HighBarrier,
                 obstacle_lane,
@@ -255,6 +360,7 @@ fn spawn_plan(
             for i in 0..4 {
                 spawn_coin(
                     commands,
+                    assets,
                     cursor.next_x + 130.0 + i as f32 * 28.0,
                     coin_lane,
                     false,
@@ -270,10 +376,11 @@ fn manage_track(
     mut platform_queue: ResMut<PlatformQueue>,
     mut cursor: ResMut<TrackCursor>,
     player_query: Query<&Transform, With<Player>>,
-    platform_query: Query<&Transform, With<Platform>>,
+    platform_query: Query<(&Transform, &Platform)>,
     item_query: Query<(Entity, &Transform), Or<(With<Obstacle>, With<Coin>, With<PowerUp>)>>,
     stats: Res<RunStats>,
     config: Res<GameConfig>,
+    assets: Res<GameAssets>,
 ) {
     let Ok(player_transform) = player_query.get_single() else {
         return;
@@ -281,9 +388,8 @@ fn manage_track(
     let player_x = player_transform.translation.x;
 
     if let Some(&first_platform_entity) = platform_queue.front() {
-        if let Ok(platform_transform) = platform_query.get(first_platform_entity) {
-            let platform_right_edge =
-                platform_transform.translation.x + (platform_transform.scale.x / 2.0);
+        if let Ok((platform_transform, platform)) = platform_query.get(first_platform_entity) {
+            let platform_right_edge = platform_transform.translation.x + (platform.size.x / 2.0);
             let screen_left_edge = player_x - (VIEWPORT_WIDTH / 2.0) - 80.0;
             if platform_right_edge < screen_left_edge {
                 commands.entity(first_platform_entity).despawn_recursive();
@@ -307,7 +413,13 @@ fn manage_track(
             rand::random::<f32>(),
             rand::random::<f32>(),
         );
-        spawn_plan(&mut commands, &mut cursor, &mut platform_queue, plan);
+        spawn_plan(
+            &mut commands,
+            &assets,
+            &mut cursor,
+            &mut platform_queue,
+            plan,
+        );
         guard += 1;
     }
 }
