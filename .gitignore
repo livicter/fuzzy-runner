@@ -1,0 +1,4 @@
+/target
+**/*.rs.bk
+fuzzy_runner_highscore.txt
+.fuzzy_runner_highscore

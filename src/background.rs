@@ -3,7 +3,7 @@ use bevy_parallax::{
     CreateParallaxEvent, LayerData, LayerSpeed, ParallaxCameraComponent, ParallaxMoveEvent,
     ParallaxPlugin, ParallaxSystems,
 };
-use crate::GameState;
+use fuzzy_runner::{run_speed, GameConfig, GameState, RunStats};
 
 pub struct BackgroundPlugin;
 
@@ -16,9 +16,13 @@ impl Plugin for BackgroundPlugin {
                 Update,
                 move_camera_system
                     .before(ParallaxSystems)
-                    .run_if(in_state(GameState::Playing)),
+                    .run_if(in_scrolling_state),
             );
     }
+}
+
+fn in_scrolling_state(state: Res<State<GameState>>) -> bool {
+    matches!(state.get(), GameState::Playing | GameState::Menu)
 }
 
 pub fn initialize_camera_system(
@@ -62,28 +66,35 @@ pub fn initialize_camera_system(
                 ..default()
             },
         ],
-        camera: camera,
+        camera,
     };
     create_parallax.send(event);
 }
 
 pub fn move_camera_system(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
     mut move_event_writer: EventWriter<ParallaxMoveEvent>,
     camera_query: Query<Entity, With<Camera>>,
+    state: Res<State<GameState>>,
+    stats: Res<RunStats>,
+    config: Res<GameConfig>,
 ) {
-    let camera = camera_query.get_single().unwrap();
-    if keyboard_input.pressed(KeyCode::KeyD) || keyboard_input.pressed(KeyCode::ArrowRight) {
+    let Ok(camera) = camera_query.get_single() else {
+        return;
+    };
+
+    let scroll = match state.get() {
+        GameState::Menu => 1.2,
+        GameState::Playing => (run_speed(stats.distance, config.difficulty, stats.boost_active())
+            / 90.0)
+            .clamp(2.2, 8.5),
+        _ => 0.0,
+    };
+
+    if scroll > 0.0 {
         move_event_writer.send(ParallaxMoveEvent {
-            translation: Vec2::new(3.0, 0.0),
+            translation: Vec2::new(scroll, 0.0),
             rotation: 0.,
-            camera: camera,
-        });
-    } else if keyboard_input.pressed(KeyCode::KeyA) || keyboard_input.pressed(KeyCode::ArrowLeft) {
-        move_event_writer.send(ParallaxMoveEvent {
-            translation: Vec2::new(-3.0, 0.0),
-            rotation: 0.,
-            camera: camera,
+            camera,
         });
     }
 }
