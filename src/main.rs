@@ -1,13 +1,17 @@
 use bevy::prelude::*;
 
+mod assets;
 mod background;
 mod collectibles;
 mod enemy;
+mod fx;
 mod platform;
 mod player;
 mod ui;
 
+use crate::assets::AssetsPlugin;
 use crate::enemy::EnemyPlugin;
+use crate::fx::FxPlugin;
 use background::BackgroundPlugin;
 use collectibles::CollectiblesPlugin;
 use fuzzy_runner::{
@@ -37,9 +41,11 @@ fn main() {
         .init_resource::<TrackCursor>()
         .insert_resource(GameConfig::default())
         .add_plugins((
+            AssetsPlugin,
             PlayerPlugin,
             PlatformPlugin,
             CollectiblesPlugin,
+            FxPlugin,
             UiPlugin,
             EnemyPlugin,
             BackgroundPlugin,
