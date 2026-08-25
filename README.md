@@ -1,66 +1,92 @@
-# fuzzy runner: Cyberpunk Rooftop Run
+# Cyber Temple — Rooftop Run
 
-Welcome to a fast-paced, endless platformer set against the backdrop of a sprawling, neon-drenched cyberpunk city. Built with the Bevy game engine in Rust, this game challenges you to survive for as long as you can, navigating treacherous rooftops while fending off a relentless zombie horde.
-<img width="1591" height="925" alt="screen_cap1" src="https://github.com/user-attachments/assets/caee4440-7fa2-45f8-9a6c-8fe470f9bdd1" />
-
------
-
-## Setting
-
-The game is set in a dystopian future city, characterized by its towering skyscrapers and vibrant, glowing advertisements. You'll be running and jumping across rooftops high above the city streets, with a beautiful parallax background that gives a sense of depth and scale to the urban environment.
+A cyberpunk endless runner built with Bevy. The old rooftop platformer is now a **Temple Run-style** chase: you always sprint forward, the city unrolls under your feet, and the horde closes in the moment you stumble.
 
 -----
 
-## Game Mechanics
+## The Run
 
-### Endless Challenge
+You are being hunted across neon rooftops. There is no walking back. Speed climbs the farther you go, gaps open up, and a zombie chaser rides your blind spot. Trip twice — or let the horde catch up — and the run is over.
 
-The primary goal is to travel as far as you can. The platforms are procedurally generated, meaning every run is a unique experience. Your distance is tracked in the top-left corner, serving as your score. Compete against yourself to beat your own highest record\!
-
-### Health & Survival
-
-You have a health bar, also displayed at the top-left. Your survival depends on two things:
-
-1.  **Avoiding the Fall:** The city is a long way down. Falling off a platform into the abyss will end your run instantly.
-2.  **Managing Enemies:** The rooftops are infested with zombies\!
-
-### The Zombie Menace
-
-Zombies are your primary obstacle. They are programmed with a simple but effective AI:
-<img width="1588" height="931" alt="screen_cap2" src="https://github.com/user-attachments/assets/2e37c9f7-0dfc-4e5b-abf6-35d87f5a19c1" />
-
-  * They will relentlessly chase you.
-  * They can jump across gaps and onto platforms to keep up with you.
-  * **If a zombie touches you, it will drain your health.**
-
-When your health bar is fully depleted, or if you fall, the game is over.
+Every attempt is scored. Beat your own high score.
 
 -----
 
-## How to Play
+## Controls
 
-The controls are simple and responsive, designed for fluid movement.
+The runner never stops. You only steer, jump, and slide.
 
-  * **Move Left:** `A` or `←` (Left Arrow)
-  * **Move Right:** `D` or `→` (Right Arrow)
-  * **Jump:** `W`, `↑` (Up Arrow), or `Spacebar`
-  * **Pause Game:** `Escape`
+| Action | Keyboard | Swipe |
+| --- | --- | --- |
+| Switch lane left / right | `A` `←` / `D` `→` | Swipe left / right |
+| Jump over crates | `W` `↑` `Space` | Swipe up |
+| Slide under neon bars | `S` `↓` | Swipe down |
+| Pause | `Escape` | — |
+| Start / run again | `Space` or `Enter` | — |
+
+Mouse drag counts as a swipe, so the same gestures work on a trackpad.
 
 -----
 
-## Features
+## How It Plays
 
-### Pause & Settings Menus
+### Three lanes
 
-You can press `Escape` at any time to bring up the pause menu, which gives you the option to:
-<img width="1590" height="918" alt="screen_cap3" src="https://github.com/user-attachments/assets/3fd7fe37-50e9-4c79-bdb5-5fb61c467ea8" />
+The rooftop is three deep tracks. Near lanes render larger and in front; far lanes shrink into the city. Obstacles only hit the lane you are in, so a last-second switch is a real save.
 
-  * **Resume:** Jump straight back into the action.
-  * **Reset:** End your current run and start a new one.
-  * **Settings:** Open the settings menu.
+### Jump, slide, or die trying
 
+- **Low magenta crates** — jump.
+- **Cyan overhead bars** — slide.
+- **Gaps** — jump or you fall into the city.
 
-### Customizable Difficulty
-<img width="1592" height="931" alt="screen_cap4" src="https://github.com/user-attachments/assets/ab9843ea-bdfb-4ee2-8c21-3d4cc5219ec7" />
-From the settings menu, you can adjust the maximum number of enemies that can appear on the screen at one time. This allows you to tailor the game's difficulty to your preference. Want a more frantic experience? Crank up the enemy count\!
+Miss a read and you **stumble**. The horde lurches closer. Stumble again before you recover, or let the threat meter fill, and you get caught.
 
+### Coins and idols
+
+Gold coins spawn in lines, jump arcs, and slide tunnels. Power-ups appear later in a run:
+
+- **Coin magnet** — nearby coins fly in, even from other lanes.
+- **Shield** — eats one mistake.
+- **x2 coins** — doubles coin points while it lasts.
+- **Nitro boost** — a short speed burst with i-frames.
+
+### The horde
+
+A single chaser stays behind you. Clean running opens a gap. Stumbles slam it shut. When it reaches you, the run ends.
+
+-----
+
+## Scoring
+
+Score is **distance + coin points**. Multiplier pickups only affect coins. High scores are saved to `~/.fuzzy_runner_highscore`.
+
+-----
+
+## Menus
+
+- **Title** — best score, run, settings.
+- **Pause** — resume, new run, settings, menu.
+- **Settings** — Easy / Normal / Hard. Difficulty changes start speed, how fast you ramp, obstacle density, and how aggressively the horde closes.
+- **Game over** — cause of death, stats, new-high-score banner, run again.
+
+-----
+
+## Run it
+
+```bash
+cargo run --release
+```
+
+Needs a windowed GPU environment (Bevy / WGPU).
+
+-----
+
+## Build
+
+Rust 2021, Bevy 0.13, `bevy-parallax` for the city layers, `rand` for the track.
+
+```bash
+cargo test
+cargo build --release
+```
