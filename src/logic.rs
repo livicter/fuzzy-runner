@@ -201,6 +201,23 @@ pub fn tick_combo(combo: u32, timer: f32, dt: f32) -> (u32, f32) {
     }
 }
 
+pub fn combo_timer_fraction(timer: f32, window: f32) -> f32 {
+    if window <= 0.0 {
+        0.0
+    } else {
+        (timer / window).clamp(0.0, 1.0)
+    }
+}
+
+/// Adjacent-lane obstacle just ahead of the runner — a last-second save.
+pub fn is_near_miss(player_x: f32, player_lane: i32, obstacle_x: f32, obstacle_lane: i32) -> bool {
+    if player_lane == obstacle_lane {
+        return false;
+    }
+    let dx = obstacle_x - player_x;
+    dx > 18.0 && dx < 70.0 && (obstacle_lane - player_lane).abs() == 1
+}
+
 pub fn countdown_label(remaining: f32) -> Option<&'static str> {
     if remaining <= 0.0 {
         None
@@ -416,6 +433,13 @@ mod tests {
         assert_eq!(register_combo(4), (5, COMBO_WINDOW));
         assert_eq!(tick_combo(4, 0.1, 0.2), (0, 0.0));
         assert_eq!(tick_combo(4, 0.50, 0.25), (4, 0.25));
+        assert!((combo_timer_fraction(COMBO_WINDOW, COMBO_WINDOW) - 1.0).abs() < f32::EPSILON);
+        assert!((combo_timer_fraction(0.0, COMBO_WINDOW)).abs() < f32::EPSILON);
+        assert_eq!(combo_timer_fraction(1.0, 0.0), 0.0);
+        assert!(is_near_miss(0.0, 1, 40.0, 0));
+        assert!(!is_near_miss(0.0, 1, 40.0, 1));
+        assert!(!is_near_miss(0.0, 0, 8.0, 1));
+        assert!(!is_near_miss(0.0, 0, 90.0, 1));
         assert_eq!(countdown_label(3.1), Some("3"));
         assert_eq!(countdown_label(2.1), Some("2"));
         assert_eq!(countdown_label(1.1), Some("1"));

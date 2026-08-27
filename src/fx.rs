@@ -1,16 +1,21 @@
 use crate::assets::GameAssets;
 use bevy::prelude::*;
 use fuzzy_runner::{
-    run_speed, safe_timer, try_despawn, Aura, AuraKind, CoinCollected, DustPuff, GameConfig,
-    GameState, OnGameScreen, Orbit, ParticleBurst, Player, PlayerState, RunStats, Spin,
-    TorchFlicker, Vignette, GROUND_Y,
+    is_near_miss, run_speed, safe_timer, try_despawn, Aura, AuraKind, CoinCollected, DustPuff,
+    GameConfig, GameState, Obstacle, OnGameScreen, Orbit, ParticleBurst, Player, PlayerState,
+    RunStats, SkyProp, Spin, TorchFlicker, Vignette, GROUND_Y,
 };
+
+#[derive(Component)]
+struct BoostPack;
 
 pub struct FxPlugin;
 
 impl Plugin for FxPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), setup_auras)
+        app.add_systems(Startup, setup_sky)
+            .add_systems(Update, pin_sky)
+            .add_systems(OnEnter(GameState::Playing), (setup_auras, setup_boost_pack))
             .add_systems(
                 Update,
                 (
@@ -23,6 +28,9 @@ impl Plugin for FxPlugin {
                     flicker_torches,
                     spin_hazards,
                     lane_switch_afterimage,
+                    landing_puff,
+                    near_miss_spark,
+                    follow_boost_pack,
                     update_vignette,
                 )
                     .run_if(in_state(GameState::Playing)),
@@ -80,6 +88,106 @@ fn setup_auras(
             OnGameScreen,
         ));
     }
+}
+
+fn setup_sky(mut commands: Commands, assets: Res<GameAssets>, existing: Query<(), With<SkyProp>>) {
+    if existing.iter().next().is_some() {
+        return;
+    }
+
+    commands.spawn((
+        SpriteBundle {
+            texture: assets.moon.clone(),
+            sprite: Sprite {
+                custom_size: Some(Vec2::splat(96.0)),
+                color: Color::rgb(1.0, 0.92, 0.78),
+                ..default()
+            },
+            transform: Transform::from_xyz(-340.0, 236.0, -7.4),
+            ..default()
+        },
+        SkyProp {
+            offset: Vec3::new(-340.0, 236.0, -7.4),
+            bob: 0.28,
+            drift: 0.0,
+        },
+    ));
+    commands.spawn((
+        SpriteBundle {
+            texture: assets.cloud_big.clone(),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(220.0, 88.0)),
+                color: Color::rgba(1.0, 0.86, 0.78, 0.52),
+                ..default()
+            },
+            transform: Transform::from_xyz(-90.0, 206.0, -7.2),
+            ..default()
+        },
+        SkyProp {
+            offset: Vec3::new(-90.0, 206.0, -7.2),
+            bob: 0.48,
+            drift: 18.0,
+        },
+    ));
+    commands.spawn((
+        SpriteBundle {
+            texture: assets.cloud_long.clone(),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(280.0, 70.0)),
+                color: Color::rgba(1.0, 0.8, 0.72, 0.4),
+                ..default()
+            },
+            transform: Transform::from_xyz(240.0, 178.0, -7.1),
+            ..default()
+        },
+        SkyProp {
+            offset: Vec3::new(240.0, 178.0, -7.1),
+            bob: 0.62,
+            drift: -14.0,
+        },
+    ));
+}
+
+fn pin_sky(
+    time: Res<Time>,
+    camera: Query<&Transform, (With<Camera>, Without<SkyProp>)>,
+    mut skies: Query<(&SkyProp, &mut Transform), Without<Camera>>,
+) {
+    let Ok(cam) = camera.get_single() else {
+        return;
+    };
+    let t = time.elapsed_seconds();
+    for (prop, mut transform) in &mut skies {
+        let bob = (t * prop.bob + prop.offset.x * 0.01).sin() * 8.0;
+        let drift = (t * 0.08).sin() * prop.drift;
+        transform.translation.x = cam.translation.x + prop.offset.x + drift;
+        transform.translation.y = cam.translation.y + prop.offset.y + bob;
+        transform.translation.z = prop.offset.z;
+    }
+}
+
+fn setup_boost_pack(
+    mut commands: Commands,
+    assets: Res<GameAssets>,
+    existing: Query<Entity, With<BoostPack>>,
+) {
+    if existing.iter().next().is_some() {
+        return;
+    }
+    commands.spawn((
+        SpriteBundle {
+            texture: assets.jetpack.clone(),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(34.0, 42.0)),
+                ..default()
+            },
+            transform: Transform::from_xyz(80.0, GROUND_Y + 50.0, 3.5),
+            visibility: Visibility::Hidden,
+            ..default()
+        },
+        BoostPack,
+        OnGameScreen,
+    ));
 }
 
 fn follow_auras(
@@ -196,6 +304,156 @@ fn lane_switch_afterimage(
             OnGameScreen,
         ));
         *last_blend = player.lane_blend;
+    }
+}
+
+fn landing_puff(
+    mut commands: Commands,
+    assets: Res<GameAssets>,
+    player: Query<(&Transform, &Player)>,
+    mut was_airborne: Local<bool>,
+) {
+    let Ok((transform, player)) = player.get_single() else {
+        return;
+    };
+    if *was_airborne && player.is_grounded {
+        for i in 0..5 {
+            let side = if i % 2 == 0 { -1.0 } else { 1.0 };
+            let texture = match i % 3 {
+                0 => assets.smoke.clone(),
+                1 => assets.dust.clone(),
+                _ => assets.particle_fire.clone(),
+            };
+            commands.spawn((
+                SpriteBundle {
+                    texture,
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::splat(32.0)),
+                        color: Color::rgba(0.88, 0.74, 0.56, 0.72),
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(
+                        transform.translation.x + side * 10.0 * i as f32,
+                        transform.translation.y - 18.0,
+                        transform.translation.z + 0.08,
+                    ),
+                    ..default()
+                },
+                DustPuff {
+                    timer: safe_timer(0.28 + i as f32 * 0.04, TimerMode::Once),
+                },
+                OnGameScreen,
+            ));
+        }
+    }
+    *was_airborne = !player.is_grounded;
+}
+
+fn near_miss_spark(
+    mut commands: Commands,
+    assets: Res<GameAssets>,
+    player: Query<(&Transform, &Player)>,
+    obstacles: Query<(&Transform, &Obstacle), Without<Player>>,
+    time: Res<Time>,
+    mut cooldown: Local<f32>,
+) {
+    *cooldown = (*cooldown - time.delta_seconds()).max(0.0);
+    if *cooldown > 0.0 {
+        return;
+    }
+    let Ok((player_tf, player)) = player.get_single() else {
+        return;
+    };
+    if !player.is_grounded {
+        return;
+    }
+    for (obstacle_tf, obstacle) in &obstacles {
+        if is_near_miss(
+            player_tf.translation.x,
+            player.lane,
+            obstacle_tf.translation.x,
+            obstacle.lane,
+        ) {
+            commands.spawn((
+                SpriteBundle {
+                    texture: assets.particle_lightning.clone(),
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::splat(28.0)),
+                        color: Color::rgba(1.0, 0.95, 0.55, 0.88),
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(
+                        player_tf.translation.x + 8.0,
+                        player_tf.translation.y + 16.0,
+                        player_tf.translation.z + 0.2,
+                    ),
+                    ..default()
+                },
+                DustPuff {
+                    timer: safe_timer(0.16, TimerMode::Once),
+                },
+                OnGameScreen,
+            ));
+            *cooldown = 0.45;
+            break;
+        }
+    }
+}
+
+fn follow_boost_pack(
+    mut commands: Commands,
+    time: Res<Time>,
+    assets: Res<GameAssets>,
+    stats: Res<RunStats>,
+    player: Query<&Transform, With<Player>>,
+    mut pack: Query<(&mut Transform, &mut Visibility), (With<BoostPack>, Without<Player>)>,
+    mut trail_acc: Local<f32>,
+) {
+    let Ok(player_tf) = player.get_single() else {
+        return;
+    };
+    let Ok((mut transform, mut visibility)) = pack.get_single_mut() else {
+        return;
+    };
+    let on = stats.boost_active();
+    *visibility = if on {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+    transform.translation = player_tf.translation + Vec3::new(-16.0, -2.0, -0.06);
+    if !on {
+        *trail_acc = 0.0;
+        return;
+    }
+    *trail_acc += time.delta_seconds();
+    if *trail_acc >= 0.05 {
+        *trail_acc = 0.0;
+        let texture = if time.elapsed_seconds() as i32 % 2 == 0 {
+            assets.particle_flare.clone()
+        } else {
+            assets.particle_fire.clone()
+        };
+        commands.spawn((
+            SpriteBundle {
+                texture,
+                sprite: Sprite {
+                    custom_size: Some(Vec2::splat(22.0)),
+                    color: Color::rgba(1.0, 0.55, 0.2, 0.75),
+                    ..default()
+                },
+                transform: Transform::from_xyz(
+                    player_tf.translation.x - 28.0,
+                    player_tf.translation.y - 6.0,
+                    player_tf.translation.z - 0.04,
+                ),
+                ..default()
+            },
+            DustPuff {
+                timer: safe_timer(0.18, TimerMode::Once),
+            },
+            OnGameScreen,
+        ));
     }
 }
 

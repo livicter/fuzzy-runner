@@ -37,19 +37,19 @@ The rooftop is three deep tracks. Near lanes render larger and in front; far lan
 ### Jump, slide, or die trying
 
 - **Logs** — jump.
-- **Hanging weights or spinning saws** — slide.
-- **Gaps** — jump the broken rooftop; warning blocks mark the edge and fire fills the pit.
+- **Hanging weights, spinning saws, or spike balls** — slide.
+- **Gaps** — jump the broken rooftop; warning blocks mark the edge and lava fills the pit.
 
 Miss a read and you **stumble**. The horde lurches closer. Stumble again before you recover, or let the threat meter fill, and you get caught.
 
 ### Coins and idols
 
-Gold coins spawn in lines, jump arcs, and slide tunnels. Keep grabbing them to build a **combo** — each streak bump multiplies coin points. Power-ups appear later in a run:
+Gold coins spawn in lines, jump arcs, and slide tunnels. Keep grabbing them to build a **combo** — each streak bump multiplies coin points, and a timer bar shows how long you have to keep the streak alive. Power-ups appear later in a run:
 
 - **Coin magnet** — nearby coins fly in, even from other lanes.
 - **Shield** — eats one mistake.
 - **x2 coins** — doubles coin points while it lasts.
-- **Nitro boost** — a short speed burst with i-frames.
+- **Nitro boost** — a short speed burst with i-frames and a jetpack flare.
 
 ### The horde
 
@@ -86,7 +86,7 @@ Needs a windowed GPU environment (Bevy / WGPU).
 
 Rust 2021, Bevy 0.13, `bevy-parallax` for the city layers, `rand` for the track.
 
-Menus, HUD, keyboard prompts, spinning coins, roadside temples, gap markers, and rooftop tiles use free **Kenney** (CC0) packs plus **Orbitron** (OFL) for titles. Credits are in `ATTRIBUTION.md`.
+Menus, HUD, keyboard prompts, spinning coins, roadside temples and idols, a night moon, lava pits, gap markers, and rooftop tiles use free **Kenney** (CC0) packs plus **Orbitron** (OFL) for titles. Credits are in `ATTRIBUTION.md`.
 
 ```bash
 cargo test

@@ -2,14 +2,15 @@ use crate::assets::GameAssets;
 use bevy::prelude::*;
 use bevy::sprite::{BorderRect, ImageScaleMode, SliceScaleMode, TextureSlicer};
 use fuzzy_runner::{
-    countdown_label, despawn_screen, displayed_meters, milestone_crossed, safe_timer, set_text,
-    try_despawn, AnimationIndices, AnimationTimer, ChaserWarn, CoinCollected, CoinHudPunch,
-    CoinText, ComboText, Countdown, DeathEvent, Difficulty, DistanceText, GameConfig, GameState,
-    GoSplash, HighScores, IgnoreSwipe, LastRun, MilestoneToast, OnGameOverMenu, OnGameScreen,
-    OnMainMenu, OnPauseMenu, OnSettingsMenu, PauseButton, PendingCommands, Player, PlayerStumbled,
-    PowerChip, PowerUpCollected, PowerUpKind, RunnerCommand, RunStats, ScoreText, ScreenFlash,
-    SettingsOrigin, StatusText, ThreatFill, TitlePreview, TouchControl, Vignette, GROUND_Y,
-    NEON_CYAN, NEON_GOLD, NEON_LIME, NEON_MAGENTA, PLATFORM_THICKNESS, PLAYER_SIZE,
+    combo_timer_fraction, countdown_label, despawn_screen, displayed_meters, milestone_crossed,
+    safe_timer, set_text, try_despawn, AnimationIndices, AnimationTimer, ChaserWarn, CoinCollected,
+    CoinHudPunch, CoinText, ComboFill, ComboText, Countdown, DeathEvent, Difficulty, DistanceText,
+    GameConfig, GameState, GoSplash, HighScores, IgnoreSwipe, LastRun, MilestoneToast,
+    OnGameOverMenu, OnGameScreen, OnMainMenu, OnPauseMenu, OnSettingsMenu, PauseButton,
+    PendingCommands, Player, PlayerStumbled, PowerChip, PowerUpCollected, PowerUpKind,
+    RunnerCommand, RunStats, ScoreText, ScreenFlash, SettingsOrigin, StatusText, ThreatFill,
+    TitlePreview, TouchControl, Vignette, COMBO_WINDOW, GROUND_Y, NEON_CYAN, NEON_GOLD, NEON_LIME,
+    NEON_MAGENTA, PLATFORM_THICKNESS, PLAYER_SIZE,
 };
 
 #[derive(Component)]
@@ -939,6 +940,32 @@ fn setup_game_ui(
                     ComboText,
                 ));
                 left.spawn((
+                    ImageBundle {
+                        style: Style {
+                            width: Val::Px(120.0),
+                            height: Val::Px(8.0),
+                            ..default()
+                        },
+                        image: UiImage::new(assets.bar.clone()),
+                        ..default()
+                    },
+                    nine_slice(),
+                ))
+                .with_children(|meter| {
+                    meter.spawn((
+                        NodeBundle {
+                            style: Style {
+                                width: Val::Percent(0.0),
+                                height: Val::Percent(100.0),
+                                ..default()
+                            },
+                            background_color: Color::rgba(1.0, 0.78, 0.2, 0.92).into(),
+                            ..default()
+                        },
+                        ComboFill,
+                    ));
+                });
+                left.spawn((
                     TextBundle::from_section("", hud_style(&assets, 15.0, NEON_LIME)),
                     StatusText,
                 ));
@@ -1833,18 +1860,30 @@ fn paint_difficulty_chips(
     }
 }
 
-fn update_combo_hud(stats: Res<RunStats>, mut query: Query<&mut Text, With<ComboText>>) {
+fn update_combo_hud(
+    stats: Res<RunStats>,
+    mut query: Query<&mut Text, With<ComboText>>,
+    mut fill: Query<&mut Style, With<ComboFill>>,
+) {
     let Ok(mut text) = query.get_single_mut() else {
         return;
     };
+    let active = stats.combo >= 3;
     set_text(
         &mut text,
-        if stats.combo >= 3 {
+        if active {
             format!("COMBO x{}", stats.combo)
         } else {
             String::new()
         },
     );
+    if let Ok(mut style) = fill.get_single_mut() {
+        style.width = Val::Percent(if active {
+            combo_timer_fraction(stats.combo_timer, COMBO_WINDOW) * 100.0
+        } else {
+            0.0
+        });
+    }
 }
 
 fn handle_touch_controls(
