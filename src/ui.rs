@@ -1159,6 +1159,26 @@ fn setup_game_ui(
                 "SWIPE OR TAP",
                 hud_style(&assets, 12.0, Color::rgb(0.78, 0.86, 1.0)),
             ));
+            compass.spawn(ImageBundle {
+                style: Style {
+                    width: Val::Px(22.0),
+                    height: Val::Px(22.0),
+                    ..default()
+                },
+                image: UiImage::new(assets.icon_mouse.clone()),
+                background_color: Color::WHITE.into(),
+                ..default()
+            });
+            compass.spawn(ImageBundle {
+                style: Style {
+                    width: Val::Px(22.0),
+                    height: Val::Px(22.0),
+                    ..default()
+                },
+                image: UiImage::new(assets.icon_tilt.clone()),
+                background_color: Color::WHITE.into(),
+                ..default()
+            });
         });
 
     spawn_vignette(&mut commands);
