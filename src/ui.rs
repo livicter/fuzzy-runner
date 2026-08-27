@@ -90,13 +90,18 @@ impl Plugin for UiPlugin {
                     flash_on_stumble.run_if(in_state(GameState::Playing)),
                     tick_screen_flash.run_if(in_state(GameState::Playing)),
                     punch_coin_hud.run_if(in_state(GameState::Playing)),
+                    paint_menu_buttons,
+                    start_from_keyboard.run_if(in_state(GameState::Menu)),
+                    restart_from_keyboard.run_if(in_state(GameState::GameOver)),
+                ),
+            )
+            .add_systems(
+                Update,
+                (
                     update_combo_hud.run_if(in_state(GameState::Playing)),
                     handle_touch_controls.run_if(in_state(GameState::Playing)),
                     animate_title_preview.run_if(in_state(GameState::Menu)),
                     pin_title_preview.run_if(in_state(GameState::Menu)),
-                    paint_menu_buttons,
-                    start_from_keyboard.run_if(in_state(GameState::Menu)),
-                    restart_from_keyboard.run_if(in_state(GameState::GameOver)),
                 ),
             );
     }
