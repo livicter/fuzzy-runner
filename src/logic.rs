@@ -161,7 +161,24 @@ pub fn is_caught(threat: f32) -> bool {
 }
 
 pub fn displayed_score(distance: f32, coin_points: u32) -> u64 {
-    (distance / 10.0).max(0.0) as u64 + coin_points as u64
+    displayed_meters(distance) + coin_points as u64
+}
+
+pub fn displayed_meters(distance: f32) -> u64 {
+    (distance / 10.0).max(0.0) as u64
+}
+
+pub fn milestone_crossed(prev_distance: f32, distance: f32, every_meters: u64) -> Option<u64> {
+    if every_meters == 0 {
+        return None;
+    }
+    let prev = displayed_meters(prev_distance) / every_meters;
+    let now = displayed_meters(distance) / every_meters;
+    if now > prev {
+        Some(now * every_meters)
+    } else {
+        None
+    }
 }
 
 pub fn award_coins(base_value: u32, multiplier_active: bool) -> CoinAward {
@@ -330,7 +347,11 @@ mod tests {
 
     #[test]
     fn score_and_coin_awards() {
+        assert_eq!(displayed_meters(250.0), 25);
         assert_eq!(displayed_score(250.0, 40), 65);
+        assert_eq!(milestone_crossed(4990.0, 5010.0, 500), Some(500));
+        assert_eq!(milestone_crossed(100.0, 200.0, 500), None);
+        assert_eq!(milestone_crossed(9990.0, 10010.0, 500), Some(1000));
         assert_eq!(
             award_coins(1, false),
             CoinAward {

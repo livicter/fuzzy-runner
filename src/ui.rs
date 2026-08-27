@@ -2,10 +2,12 @@ use crate::assets::GameAssets;
 use bevy::prelude::*;
 use bevy::sprite::{BorderRect, ImageScaleMode, SliceScaleMode, TextureSlicer};
 use fuzzy_runner::{
-    despawn_screen, CoinText, DeathEvent, Difficulty, DistanceText, GameConfig, GameState,
-    HighScores, LastRun, OnGameOverMenu, OnGameScreen, OnMainMenu, OnPauseMenu, OnSettingsMenu,
-    PauseButton, Player, PowerUpCollected, RunStats, ScoreText, SettingsOrigin, StatusText,
-    ThreatFill, NEON_CYAN, NEON_GOLD, NEON_LIME, NEON_MAGENTA,
+    despawn_screen, displayed_meters, milestone_crossed, ChaserWarn, CoinCollected, CoinHudPunch,
+    CoinText, DeathEvent, Difficulty, DistanceText, GameConfig, GameState, GoSplash, HighScores,
+    LastRun, MilestoneToast, OnGameOverMenu, OnGameScreen, OnMainMenu, OnPauseMenu, OnSettingsMenu,
+    PauseButton, Player, PlayerStumbled, PowerChip, PowerUpCollected, PowerUpKind, RunStats,
+    ScoreText, ScreenFlash, SettingsOrigin, StatusText, ThreatFill, NEON_CYAN, NEON_GOLD,
+    NEON_LIME, NEON_MAGENTA,
 };
 
 #[derive(Component)]
@@ -38,7 +40,10 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::Menu), setup_main_menu)
             .add_systems(OnExit(GameState::Menu), despawn_screen::<OnMainMenu>)
-            .add_systems(OnEnter(GameState::Playing), setup_game_ui)
+            .add_systems(
+                OnEnter(GameState::Playing),
+                (setup_game_ui, setup_go_splash).chain(),
+            )
             .add_systems(OnEnter(GameState::Paused), setup_pause_menu)
             .add_systems(OnExit(GameState::Paused), despawn_screen::<OnPauseMenu>)
             .add_systems(
@@ -65,6 +70,12 @@ impl Plugin for UiPlugin {
                     update_hud.run_if(in_state(GameState::Playing)),
                     handle_pause_button.run_if(in_state(GameState::Playing)),
                     show_power_up_status,
+                    tick_go_splash.run_if(in_state(GameState::Playing)),
+                    announce_milestones.run_if(in_state(GameState::Playing)),
+                    tick_toasts.run_if(in_state(GameState::Playing)),
+                    flash_on_stumble.run_if(in_state(GameState::Playing)),
+                    tick_screen_flash.run_if(in_state(GameState::Playing)),
+                    punch_coin_hud.run_if(in_state(GameState::Playing)),
                     paint_menu_buttons,
                     start_from_keyboard.run_if(in_state(GameState::Menu)),
                     restart_from_keyboard.run_if(in_state(GameState::GameOver)),
@@ -352,6 +363,35 @@ fn spawn_key_hint(parent: &mut ChildBuilder, key: Handle<Image>, wide: bool) {
     });
 }
 
+fn spawn_power_chip(parent: &mut ChildBuilder, assets: &GameAssets, kind: PowerUpKind) {
+    parent
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(3.0),
+                    padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
+                    ..default()
+                },
+                visibility: Visibility::Hidden,
+                ..default()
+            },
+            PowerChip { kind },
+        ))
+        .with_children(|chip| {
+            chip.spawn(ImageBundle {
+                style: Style {
+                    width: Val::Px(16.0),
+                    height: Val::Px(16.0),
+                    ..default()
+                },
+                image: UiImage::new(assets.power_icon(kind)),
+                ..default()
+            });
+        });
+}
+
 fn spawn_control_chip(
     parent: &mut ChildBuilder,
     assets: &GameAssets,
@@ -451,15 +491,15 @@ fn setup_main_menu(mut commands: Commands, highs: Res<HighScores>, assets: Res<G
                             spawn_icon_label(
                                 row,
                                 &assets,
-                                assets.icon_trophy.clone(),
+                                assets.star_badge.clone(),
                                 format!("{}", highs.score),
                                 NEON_GOLD,
                             );
                             spawn_icon_label(
                                 row,
                                 &assets,
-                                assets.icon_star.clone(),
-                                format!("{}m", (highs.distance / 10.0) as u64),
+                                assets.icon_trophy.clone(),
+                                format!("{}m", displayed_meters(highs.distance)),
                                 NEON_CYAN,
                             );
                             spawn_icon_label(
@@ -559,7 +599,7 @@ fn setup_main_menu(mut commands: Commands, highs: Res<HighScores>, assets: Res<G
                                     height: Val::Px(16.0),
                                     ..default()
                                 },
-                                image: UiImage::new(assets.icon_info.clone()),
+                                image: UiImage::new(assets.icon_power.clone()),
                                 background_color: NEON_CYAN.into(),
                                 ..default()
                             });
@@ -614,15 +654,12 @@ fn setup_settings_menu(mut commands: Commands, config: Res<GameConfig>, assets: 
                         ),
                         DifficultyLabel,
                     ));
-                    panel.spawn(
-                        TextBundle::from_section(
-                            "Speed, density, and how fast the horde closes in.",
-                            body_style(&assets, 18.0, Color::rgb(0.86, 0.9, 1.0)),
-                        )
-                        .with_style(Style {
-                            margin: UiRect::vertical(Val::Px(16.0)),
-                            ..default()
-                        }),
+                    spawn_icon_label(
+                        panel,
+                        &assets,
+                        assets.icon_info.clone(),
+                        "Speed, density, and how fast the horde closes in.",
+                        Color::rgb(0.86, 0.9, 1.0),
                     );
 
                     panel
@@ -731,6 +768,17 @@ fn setup_pause_menu(mut commands: Commands, assets: Res<GameAssets>) {
                             nine_slice(),
                         ))
                         .with_children(|banner| {
+                            banner.spawn(ImageBundle {
+                                style: Style {
+                                    width: Val::Px(22.0),
+                                    height: Val::Px(22.0),
+                                    margin: UiRect::right(Val::Px(8.0)),
+                                    ..default()
+                                },
+                                image: UiImage::new(assets.icon_locked.clone()),
+                                background_color: Color::rgb(0.25, 0.12, 0.06).into(),
+                                ..default()
+                            });
                             banner.spawn(TextBundle::from_section(
                                 "PAUSED",
                                 title_style(&assets, 28.0, Color::rgb(0.22, 0.12, 0.06)),
@@ -829,15 +877,20 @@ fn setup_game_ui(
                     ..default()
                 })
                 .with_children(|row| {
-                    row.spawn(ImageBundle {
-                        style: Style {
-                            width: Val::Px(36.0),
-                            height: Val::Px(36.0),
+                    row.spawn((
+                        ImageBundle {
+                            style: Style {
+                                width: Val::Px(36.0),
+                                height: Val::Px(36.0),
+                                ..default()
+                            },
+                            image: UiImage::new(assets.icon_coin.clone()),
                             ..default()
                         },
-                        image: UiImage::new(assets.icon_coin.clone()),
-                        ..default()
-                    });
+                        CoinHudPunch {
+                            timer: Timer::from_seconds(0.01, TimerMode::Once),
+                        },
+                    ));
                     row.spawn((
                         TextBundle::from_section("0", hud_style(&assets, 34.0, NEON_GOLD)),
                         CoinText,
@@ -851,6 +904,21 @@ fn setup_game_ui(
                     TextBundle::from_section("", hud_style(&assets, 15.0, NEON_LIME)),
                     StatusText,
                 ));
+                left.spawn(NodeBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(6.0),
+                        margin: UiRect::top(Val::Px(4.0)),
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|row| {
+                    spawn_power_chip(row, &assets, PowerUpKind::Magnet);
+                    spawn_power_chip(row, &assets, PowerUpKind::Shield);
+                    spawn_power_chip(row, &assets, PowerUpKind::Multiplier);
+                    spawn_power_chip(row, &assets, PowerUpKind::Boost);
+                });
             });
 
             bar.spawn((
@@ -950,6 +1018,19 @@ fn setup_game_ui(
                             "HORDE",
                             hud_style(&assets, 14.0, Color::rgb(1.0, 0.45, 0.45)),
                         ));
+                        row.spawn((
+                            ImageBundle {
+                                style: Style {
+                                    width: Val::Px(18.0),
+                                    height: Val::Px(18.0),
+                                    ..default()
+                                },
+                                image: UiImage::new(assets.icon_exclaim.clone()),
+                                background_color: Color::rgba(1.0, 0.3, 0.3, 0.0).into(),
+                                ..default()
+                            },
+                            ChaserWarn,
+                        ));
                     });
                 right
                     .spawn((
@@ -998,60 +1079,66 @@ fn setup_game_ui(
             OnGameScreen,
         ))
         .with_children(|compass| {
-            compass.spawn(ImageBundle {
-                style: Style {
-                    width: Val::Px(18.0),
-                    height: Val::Px(18.0),
-                    ..default()
-                },
-                image: UiImage::new(assets.icon_arrow_up.clone()),
-                background_color: NEON_CYAN.into(),
-                ..default()
-            });
             compass
                 .spawn(NodeBundle {
                     style: Style {
                         flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(4.0),
-                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(3.0),
                         ..default()
                     },
                     ..default()
                 })
                 .with_children(|row| {
-                    row.spawn(ImageBundle {
-                        style: Style {
-                            width: Val::Px(18.0),
-                            height: Val::Px(18.0),
+                    for icon in [
+                        assets.icon_arrow_left.clone(),
+                        assets.icon_arrow_up.clone(),
+                        assets.icon_arrow_down.clone(),
+                        assets.icon_arrow_right.clone(),
+                    ] {
+                        row.spawn(ImageBundle {
+                            style: Style {
+                                width: Val::Px(14.0),
+                                height: Val::Px(14.0),
+                                ..default()
+                            },
+                            image: UiImage::new(icon),
+                            background_color: NEON_CYAN.into(),
                             ..default()
-                        },
-                        image: UiImage::new(assets.icon_arrow_left.clone()),
-                        background_color: NEON_CYAN.into(),
-                        ..default()
-                    });
-                    row.spawn(TextBundle::from_section(
-                        "SWIPE",
-                        hud_style(&assets, 12.0, Color::rgb(0.78, 0.86, 1.0)),
-                    ));
-                    row.spawn(ImageBundle {
-                        style: Style {
-                            width: Val::Px(18.0),
-                            height: Val::Px(18.0),
-                            ..default()
-                        },
-                        image: UiImage::new(assets.icon_arrow_right.clone()),
-                        background_color: NEON_CYAN.into(),
-                        ..default()
-                    });
+                        });
+                    }
                 });
             compass.spawn(ImageBundle {
                 style: Style {
-                    width: Val::Px(18.0),
-                    height: Val::Px(18.0),
+                    width: Val::Px(26.0),
+                    height: Val::Px(26.0),
                     ..default()
                 },
-                image: UiImage::new(assets.icon_arrow_down.clone()),
+                image: UiImage::new(assets.icon_dpad.clone()),
                 background_color: NEON_CYAN.into(),
+                ..default()
+            });
+            compass.spawn(TextBundle::from_section(
+                "SWIPE",
+                hud_style(&assets, 12.0, Color::rgb(0.78, 0.86, 1.0)),
+            ));
+            compass.spawn(ImageBundle {
+                style: Style {
+                    width: Val::Px(22.0),
+                    height: Val::Px(22.0),
+                    ..default()
+                },
+                image: UiImage::new(assets.icon_mouse.clone()),
+                background_color: Color::WHITE.into(),
+                ..default()
+            });
+            compass.spawn(ImageBundle {
+                style: Style {
+                    width: Val::Px(22.0),
+                    height: Val::Px(22.0),
+                    ..default()
+                },
+                image: UiImage::new(assets.icon_tilt.clone()),
+                background_color: Color::WHITE.into(),
                 ..default()
             });
         });
@@ -1096,13 +1183,15 @@ fn update_hud(
         ),
     >,
     mut threat_query: Query<&mut Style, With<ThreatFill>>,
+    mut chips: Query<(&PowerChip, &mut Visibility)>,
+    mut warn: Query<&mut BackgroundColor, With<ChaserWarn>>,
     player_query: Query<&Player>,
 ) {
     if let Ok(mut text) = score_query.get_single_mut() {
         text.sections[0].value = format!("SCORE {}", stats.score());
     }
     if let Ok(mut text) = distance_query.get_single_mut() {
-        text.sections[0].value = format!("{}m", (stats.distance / 10.0) as u64);
+        text.sections[0].value = format!("{}m", displayed_meters(stats.distance));
     }
     if let Ok(mut text) = coin_query.get_single_mut() {
         text.sections[0].value = format!("{}", stats.coins);
@@ -1110,28 +1199,36 @@ fn update_hud(
     if let Ok(mut fill) = threat_query.get_single_mut() {
         fill.width = Val::Percent((stats.threat * 100.0).clamp(0.0, 100.0));
     }
+    let has_shield = player_query
+        .get_single()
+        .map(|player| player.has_shield)
+        .unwrap_or(false);
+    for (chip, mut visibility) in &mut chips {
+        let on = match chip.kind {
+            PowerUpKind::Magnet => stats.magnet_active(),
+            PowerUpKind::Shield => has_shield,
+            PowerUpKind::Multiplier => stats.multiplier_active(),
+            PowerUpKind::Boost => stats.boost_active(),
+        };
+        *visibility = if on {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
+    if let Ok(mut color) = warn.get_single_mut() {
+        *color = if stats.threat > 0.45 {
+            Color::rgba(1.0, 0.25, 0.25, 0.35 + stats.threat * 0.65).into()
+        } else {
+            Color::rgba(1.0, 0.3, 0.3, 0.0).into()
+        };
+    }
     if let Ok(mut text) = status_query.get_single_mut() {
-        let mut parts = Vec::new();
-        if stats.multiplier_active() {
-            parts.push(format!("x2 {:.0}s", stats.multiplier_timer));
-        }
-        if stats.magnet_active() {
-            parts.push(format!("MAGNET {:.0}s", stats.magnet_timer));
-        }
-        if stats.boost_active() {
-            parts.push(format!("BOOST {:.0}s", stats.boost_timer));
-        }
-        if player_query
-            .get_single()
-            .map(|player| player.has_shield)
-            .unwrap_or(false)
-        {
-            parts.push("SHIELD".to_string());
-        }
-        if stats.threat > 0.35 {
-            parts.push("CLOSING IN".to_string());
-        }
-        text.sections[0].value = parts.join("  ");
+        text.sections[0].value = if stats.threat > 0.35 {
+            "CLOSING IN".to_string()
+        } else {
+            String::new()
+        };
     }
 }
 
@@ -1146,7 +1243,12 @@ fn show_power_up_status(
     }
 }
 
-fn setup_game_over_screen(mut commands: Commands, last: Res<LastRun>, assets: Res<GameAssets>) {
+fn setup_game_over_screen(
+    mut commands: Commands,
+    last: Res<LastRun>,
+    highs: Res<HighScores>,
+    assets: Res<GameAssets>,
+) {
     commands
         .spawn((
             NodeBundle {
@@ -1183,7 +1285,7 @@ fn setup_game_over_screen(mut commands: Commands, last: Res<LastRun>, assets: Re
                 ))
                 .with_children(|banner| {
                     banner.spawn(TextBundle::from_section(
-                        format!("{}m", (last.distance / 10.0) as u64),
+                        format!("{}m", displayed_meters(last.distance)),
                         title_style(&assets, 36.0, Color::rgb(0.22, 0.12, 0.06)),
                     ));
                 });
@@ -1218,7 +1320,7 @@ fn setup_game_over_screen(mut commands: Commands, last: Res<LastRun>, assets: Re
                         spawn_icon_label(
                             panel,
                             &assets,
-                            assets.world_star.clone(),
+                            assets.icon_check.clone(),
                             "NEW HIGH SCORE",
                             NEON_GOLD,
                         );
@@ -1227,40 +1329,37 @@ fn setup_game_over_screen(mut commands: Commands, last: Res<LastRun>, assets: Re
                         .spawn(NodeBundle {
                             style: Style {
                                 flex_direction: FlexDirection::Row,
-                                column_gap: Val::Px(20.0),
+                                column_gap: Val::Px(28.0),
                                 margin: UiRect::vertical(Val::Px(14.0)),
                                 ..default()
                             },
                             ..default()
                         })
                         .with_children(|row| {
-                            spawn_icon_label(
+                            spawn_run_column(
                                 row,
                                 &assets,
-                                assets.icon_star.clone(),
-                                format!("{}", last.score),
-                                Color::WHITE,
+                                assets.icon_medal.clone(),
+                                "THIS RUN",
+                                last.score,
+                                displayed_meters(last.distance),
+                                last.coins,
                             );
-                            spawn_icon_label(
+                            spawn_run_column(
                                 row,
                                 &assets,
-                                assets.icon_trophy.clone(),
-                                format!("{}m", (last.distance / 10.0) as u64),
-                                NEON_CYAN,
-                            );
-                            spawn_icon_label(
-                                row,
-                                &assets,
-                                assets.icon_coin.clone(),
-                                format!("{}", last.coins),
-                                NEON_GOLD,
+                                assets.icon_board.clone(),
+                                "BEST",
+                                highs.score,
+                                displayed_meters(highs.distance),
+                                highs.coins,
                             );
                         });
                     spawn_image_button(
                         panel,
                         &assets,
                         assets.button_blue.clone(),
-                        assets.icon_play.clone(),
+                        assets.icon_repeat.clone(),
                         "RUN AGAIN",
                         MenuButtonAction::Reset,
                         true,
@@ -1276,6 +1375,244 @@ fn setup_game_over_screen(mut commands: Commands, last: Res<LastRun>, assets: Re
                     );
                 });
         });
+}
+
+fn spawn_run_column(
+    parent: &mut ChildBuilder,
+    assets: &GameAssets,
+    icon: Handle<Image>,
+    title: &str,
+    score: u64,
+    meters: u64,
+    coins: u32,
+) {
+    parent
+        .spawn(NodeBundle {
+            style: Style {
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(4.0),
+                min_width: Val::Px(180.0),
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|col| {
+            spawn_icon_label(col, assets, icon, title, NEON_CYAN);
+            col.spawn(TextBundle::from_section(
+                format!("{score}"),
+                hud_style(assets, 22.0, Color::WHITE),
+            ));
+            col.spawn(TextBundle::from_section(
+                format!("{meters}m   {coins} coins"),
+                hud_style(assets, 16.0, NEON_GOLD),
+            ));
+        });
+}
+
+fn setup_go_splash(mut commands: Commands, stats: Res<RunStats>, assets: Res<GameAssets>) {
+    if stats.distance > 8.0 {
+        return;
+    }
+    commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    ..default()
+                },
+                ..default()
+            },
+            GoSplash {
+                timer: Timer::from_seconds(1.25, TimerMode::Once),
+            },
+            OnGameScreen,
+        ))
+        .with_children(|root| {
+            root.spawn((
+                ImageBundle {
+                    style: Style {
+                        width: Val::Px(280.0),
+                        height: Val::Px(90.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    image: UiImage::new(assets.banner_hanging.clone()),
+                    background_color: Color::WHITE.into(),
+                    ..default()
+                },
+                nine_slice(),
+            ))
+            .with_children(|banner| {
+                banner.spawn(TextBundle::from_section(
+                    "GO!",
+                    title_style(&assets, 48.0, Color::rgb(0.18, 0.08, 0.04)),
+                ));
+            });
+        });
+}
+
+fn tick_go_splash(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut GoSplash, &mut BackgroundColor)>,
+) {
+    for (entity, mut splash, mut background) in &mut query {
+        splash.timer.tick(time.delta());
+        let fade = 1.0 - splash.timer.fraction();
+        *background = Color::rgba(0.0, 0.0, 0.0, fade * 0.18).into();
+        if splash.timer.finished() {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+}
+
+fn announce_milestones(
+    mut commands: Commands,
+    stats: Res<RunStats>,
+    assets: Res<GameAssets>,
+    mut last_distance: Local<f32>,
+) {
+    if stats.distance + 1.0 < *last_distance {
+        *last_distance = stats.distance;
+    }
+    if let Some(meters) = milestone_crossed(*last_distance, stats.distance, 500) {
+        commands
+            .spawn((
+                NodeBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        width: Val::Percent(100.0),
+                        top: Val::Px(96.0),
+                        justify_content: JustifyContent::Center,
+                        ..default()
+                    },
+                    ..default()
+                },
+                MilestoneToast {
+                    timer: Timer::from_seconds(1.4, TimerMode::Once),
+                },
+                OnGameScreen,
+            ))
+            .with_children(|root| {
+                root.spawn((
+                    ImageBundle {
+                        style: Style {
+                            width: Val::Px(240.0),
+                            height: Val::Px(58.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            column_gap: Val::Px(8.0),
+                            ..default()
+                        },
+                        image: UiImage::new(assets.banner.clone()),
+                        background_color: Color::WHITE.into(),
+                        ..default()
+                    },
+                    nine_slice(),
+                ))
+                .with_children(|banner| {
+                    banner.spawn(ImageBundle {
+                        style: Style {
+                            width: Val::Px(22.0),
+                            height: Val::Px(22.0),
+                            ..default()
+                        },
+                        image: UiImage::new(assets.world_star.clone()),
+                        ..default()
+                    });
+                    banner.spawn(TextBundle::from_section(
+                        format!("{meters}m"),
+                        title_style(&assets, 26.0, Color::rgb(0.2, 0.1, 0.06)),
+                    ));
+                });
+            });
+    }
+    *last_distance = stats.distance;
+}
+
+fn tick_toasts(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut MilestoneToast)>,
+) {
+    for (entity, mut toast) in &mut query {
+        toast.timer.tick(time.delta());
+        if toast.timer.finished() {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+}
+
+fn flash_on_stumble(
+    mut commands: Commands,
+    mut events: EventReader<PlayerStumbled>,
+    existing: Query<Entity, With<ScreenFlash>>,
+) {
+    if events.read().last().is_none() {
+        return;
+    }
+    if existing.iter().next().is_some() {
+        return;
+    }
+    commands.spawn((
+        NodeBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            background_color: Color::rgba(1.0, 0.15, 0.2, 0.32).into(),
+            ..default()
+        },
+        ScreenFlash {
+            timer: Timer::from_seconds(0.28, TimerMode::Once),
+        },
+        OnGameScreen,
+    ));
+}
+
+fn tick_screen_flash(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut ScreenFlash, &mut BackgroundColor)>,
+) {
+    for (entity, mut flash, mut background) in &mut query {
+        flash.timer.tick(time.delta());
+        let fade = 1.0 - flash.timer.fraction();
+        *background = Color::rgba(1.0, 0.15, 0.2, 0.32 * fade).into();
+        if flash.timer.finished() {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+}
+
+fn punch_coin_hud(
+    mut events: EventReader<CoinCollected>,
+    time: Res<Time>,
+    mut query: Query<(&mut Style, &mut CoinHudPunch)>,
+) {
+    let punched = events.read().last().is_some();
+    for (mut style, mut punch) in &mut query {
+        if punched {
+            punch.timer = Timer::from_seconds(0.22, TimerMode::Once);
+        }
+        punch.timer.tick(time.delta());
+        let t = if punch.timer.finished() {
+            0.0
+        } else {
+            1.0 - punch.timer.fraction()
+        };
+        let size = 36.0 + 10.0 * t;
+        style.width = Val::Px(size);
+        style.height = Val::Px(size);
+    }
 }
 
 fn paint_menu_buttons(

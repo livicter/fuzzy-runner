@@ -36,9 +36,9 @@ The rooftop is three deep tracks. Near lanes render larger and in front; far lan
 
 ### Jump, slide, or die trying
 
-- **Low magenta crates** — jump.
-- **Cyan overhead bars** — slide.
-- **Gaps** — jump or you fall into the city.
+- **Logs** — jump.
+- **Hanging weights or spinning saws** — slide.
+- **Gaps** — jump the broken rooftop; warning blocks mark the edge.
 
 Miss a read and you **stumble**. The horde lurches closer. Stumble again before you recover, or let the threat meter fill, and you get caught.
 
@@ -86,7 +86,7 @@ Needs a windowed GPU environment (Bevy / WGPU).
 
 Rust 2021, Bevy 0.13, `bevy-parallax` for the city layers, `rand` for the track.
 
-Menus, HUD, keyboard prompts, spinning coins, roadside temples, and rooftop tiles use free **Kenney** (CC0) packs plus **Orbitron** (OFL) for titles. Credits are in `ATTRIBUTION.md`.
+Menus, HUD, keyboard prompts, spinning coins, roadside temples, gap markers, and rooftop tiles use free **Kenney** (CC0) packs plus **Orbitron** (OFL) for titles. Credits are in `ATTRIBUTION.md`.
 
 ```bash
 cargo test

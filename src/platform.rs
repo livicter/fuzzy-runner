@@ -3,8 +3,8 @@ use bevy::prelude::*;
 use fuzzy_runner::{
     lane_scale, lane_z, plan_segment, Bob, Coin, CoinSpin, Decor, GameConfig, GameState, Obstacle,
     ObstacleKind, OnGameScreen, Platform, PlatformQueue, Player, PowerUp, PowerUpKind, RunStats,
-    SegmentPlan, TrackCursor, GROUND_Y, INITIAL_TRACK_END, PLATFORM_THICKNESS, TRACK_LOOKAHEAD,
-    VIEWPORT_WIDTH,
+    SegmentPlan, Spin, TorchFlicker, TrackCursor, GROUND_Y, INITIAL_TRACK_END, PLATFORM_THICKNESS,
+    TRACK_LOOKAHEAD, VIEWPORT_WIDTH,
 };
 
 const TILE: f32 = 70.0;
@@ -158,36 +158,57 @@ fn spawn_obstacle(
             ));
         }
         ObstacleKind::HighBarrier => {
-            commands.spawn((
-                SpriteBundle {
-                    texture: assets.chain.clone(),
-                    sprite: Sprite {
-                        custom_size: Some(Vec2::new(18.0, 70.0) * scale),
+            if rand::random::<f32>() > 0.45 {
+                commands.spawn((
+                    SpriteBundle {
+                        texture: assets.saw.clone(),
+                        sprite: Sprite {
+                            custom_size: Some(Vec2::splat(56.0 * scale)),
+                            ..default()
+                        },
+                        transform: Transform::from_xyz(x, GROUND_Y + 92.0, lane_z(lane)),
                         ..default()
                     },
-                    transform: Transform::from_xyz(x, GROUND_Y + 118.0, lane_z(lane) - 0.02),
-                    ..default()
-                },
-                Decor,
-                OnGameScreen,
-            ));
-            commands.spawn((
-                SpriteBundle {
-                    texture: assets.weight.clone(),
-                    sprite: Sprite {
-                        custom_size: Some(Vec2::new(48.0, 48.0) * scale),
+                    Obstacle {
+                        kind,
+                        lane,
+                        size: Vec2::new(56.0, 40.0),
+                    },
+                    Spin { speed: 8.0 },
+                    OnGameScreen,
+                ));
+            } else {
+                commands.spawn((
+                    SpriteBundle {
+                        texture: assets.chain.clone(),
+                        sprite: Sprite {
+                            custom_size: Some(Vec2::new(18.0, 70.0) * scale),
+                            ..default()
+                        },
+                        transform: Transform::from_xyz(x, GROUND_Y + 118.0, lane_z(lane) - 0.02),
                         ..default()
                     },
-                    transform: Transform::from_xyz(x, GROUND_Y + 86.0, lane_z(lane)),
-                    ..default()
-                },
-                Obstacle {
-                    kind,
-                    lane,
-                    size: Vec2::new(56.0, 40.0),
-                },
-                OnGameScreen,
-            ));
+                    Decor,
+                    OnGameScreen,
+                ));
+                commands.spawn((
+                    SpriteBundle {
+                        texture: assets.weight.clone(),
+                        sprite: Sprite {
+                            custom_size: Some(Vec2::new(48.0, 48.0) * scale),
+                            ..default()
+                        },
+                        transform: Transform::from_xyz(x, GROUND_Y + 86.0, lane_z(lane)),
+                        ..default()
+                    },
+                    Obstacle {
+                        kind,
+                        lane,
+                        size: Vec2::new(56.0, 40.0),
+                    },
+                    OnGameScreen,
+                ));
+            }
         }
         ObstacleKind::LaneBlock => {
             commands.spawn((
@@ -222,12 +243,25 @@ fn spawn_obstacle(
             ));
             commands.spawn((
                 SpriteBundle {
-                    texture: assets.crate_warn.clone(),
+                    texture: assets.bomb.clone(),
                     sprite: Sprite {
-                        custom_size: Some(Vec2::new(28.0, 28.0) * scale),
+                        custom_size: Some(Vec2::new(30.0, 30.0) * scale),
                         ..default()
                     },
-                    transform: Transform::from_xyz(x + 22.0, GROUND_Y + 28.0, lane_z(lane) + 0.02),
+                    transform: Transform::from_xyz(x + 22.0, GROUND_Y + 30.0, lane_z(lane) + 0.02),
+                    ..default()
+                },
+                Decor,
+                OnGameScreen,
+            ));
+            commands.spawn((
+                SpriteBundle {
+                    texture: assets.crate_warn.clone(),
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::new(22.0, 22.0) * scale),
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(x - 20.0, GROUND_Y + 26.0, lane_z(lane) + 0.01),
                     ..default()
                 },
                 Decor,
@@ -325,6 +359,54 @@ fn spawn_prop(
     ));
 }
 
+fn spawn_gap_edge(commands: &mut Commands, assets: &GameAssets, x: f32) {
+    spawn_prop(
+        commands,
+        assets.block_warn.clone(),
+        x,
+        GROUND_Y + 26.0,
+        2.8,
+        Vec2::new(42.0, 42.0),
+        Color::WHITE,
+    );
+    spawn_prop(
+        commands,
+        assets.block_exclaim.clone(),
+        x,
+        GROUND_Y + 68.0,
+        2.85,
+        Vec2::new(38.0, 38.0),
+        Color::WHITE,
+    );
+    spawn_prop(
+        commands,
+        assets.spikes.clone(),
+        x,
+        GROUND_Y + 12.0,
+        2.9,
+        Vec2::new(48.0, 20.0),
+        Color::WHITE,
+    );
+    spawn_prop(
+        commands,
+        assets.flag_yellow.clone(),
+        x + 16.0,
+        GROUND_Y + 78.0,
+        2.86,
+        Vec2::new(36.0, 48.0),
+        Color::WHITE,
+    );
+    spawn_prop(
+        commands,
+        assets.flag_red.clone(),
+        x - 16.0,
+        GROUND_Y + 74.0,
+        2.84,
+        Vec2::new(32.0, 46.0),
+        Color::WHITE,
+    );
+}
+
 fn spawn_scenery(commands: &mut Commands, assets: &GameAssets, x: f32, roll: f32) {
     let near_tint = Color::rgb(0.75, 0.9, 1.0);
     let far_tint = Color::rgb(0.62, 0.38, 0.88);
@@ -418,16 +500,25 @@ fn spawn_scenery(commands: &mut Commands, assets: &GameAssets, x: f32, roll: f32
         _ => {}
     }
 
-    match ((roll * 8.0) as i32).rem_euclid(9) {
-        0 => spawn_prop(
-            commands,
-            assets.torch.clone(),
-            x,
-            GROUND_Y + 58.0,
-            3.3,
-            Vec2::new(28.0, 70.0),
-            Color::WHITE,
-        ),
+    match ((roll * 8.0) as i32).rem_euclid(11) {
+        0 => {
+            commands.spawn((
+                SpriteBundle {
+                    texture: assets.torch_on.clone(),
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::new(28.0, 70.0)),
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(x, GROUND_Y + 58.0, 3.3),
+                    ..default()
+                },
+                Decor,
+                TorchFlicker {
+                    timer: Timer::from_seconds(0.12, TimerMode::Repeating),
+                },
+                OnGameScreen,
+            ));
+        }
         1 => spawn_prop(
             commands,
             assets.flag.clone(),
@@ -483,6 +574,24 @@ fn spawn_scenery(commands: &mut Commands, assets: &GameAssets, x: f32, roll: f32
             Color::rgb(0.55, 1.0, 0.75),
         ),
         7 => spawn_prop(
+            commands,
+            assets.cactus.clone(),
+            x,
+            GROUND_Y + 44.0,
+            3.22,
+            Vec2::new(36.0, 56.0),
+            Color::rgb(0.55, 1.0, 0.7),
+        ),
+        8 => spawn_prop(
+            commands,
+            assets.torch.clone(),
+            x,
+            GROUND_Y + 58.0,
+            3.22,
+            Vec2::new(26.0, 64.0),
+            Color::WHITE,
+        ),
+        9 => spawn_prop(
             commands,
             assets.crate_box.clone(),
             x,
@@ -604,6 +713,8 @@ fn spawn_plan(
             cursor.next_x += length;
         }
         SegmentPlan::Gap { length } => {
+            spawn_gap_edge(commands, assets, cursor.next_x - 18.0);
+            spawn_gap_edge(commands, assets, cursor.next_x + length + 18.0);
             cursor.next_x += length;
         }
         SegmentPlan::PowerUp { kind, lane } => {

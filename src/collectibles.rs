@@ -51,7 +51,7 @@ fn spin_coins(
     for (mut texture, mut spin) in &mut query {
         spin.timer.tick(time.delta());
         if spin.timer.just_finished() {
-            spin.frame = (spin.frame + 1) % 3;
+            spin.frame = (spin.frame + 1) % 4;
             *texture = assets.coin_frame(spin.frame);
         }
     }

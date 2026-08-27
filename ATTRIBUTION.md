@@ -8,10 +8,13 @@ All added art and typefaces are free for commercial use.
 
 - [Kenney Fonts](https://kenney.nl/assets/kenney-fonts) — `KenneyFuture.ttf`, `KenneyFutureNarrow.ttf`, `KenneyMini.ttf`
 - [UI Pack - Sci-Fi](https://kenney.nl/assets/ui-pack-sci-fi) — menu buttons, glass panels, threat bar
+- [UI Pack](https://kenney.nl/assets/ui-pack) — check badge, GO/milestone stars
 - [UI Pack - Adventure](https://kenney.nl/assets/ui-pack-adventure) — hanging banners, pause button, distance ribbon
 - [Pixel UI Pack](https://kenney.nl/assets/pixel-ui-pack) — HUD 9-slice panels
-- [Game Icons](https://kenney.nl/assets/game-icons) — play, pause, gear, arrows, trophy, star
+- [Game Icons](https://kenney.nl/assets/game-icons) — play, pause, gear, arrows, trophy, star, medals
+- [Game Icons (Expansion)](https://kenney.nl/assets/game-icons-expansion) — mouse, D-pad, and tilt swipe hints
 - [Input Prompts](https://kenney.nl/assets/input-prompts) — keyboard hints on the title screen
+- [New Platformer Pack](https://kenney.nl/assets/new-platformer-pack) — saws, bombs, gap warning blocks, flags, flickering torches
 - [Platformer Art Deluxe](https://kenney.nl/assets/platformer-art-deluxe) — coins, crates, gems, spikes, rooftop tiles, HUD coin/heart
 - [Abstract Platformer](https://kenney.nl/assets/abstract-platformer) — painted lanes, logs, hanging weights, roadside props
 - [Background Elements](https://kenney.nl/assets/background-elements) — temples, pyramids, mountains, trees, clouds
