@@ -4,10 +4,10 @@ use std::collections::VecDeque;
 pub mod logic;
 
 pub use logic::{
-    award_coins, clamp_lane, displayed_score, format_highscore, is_caught, is_new_highscore,
-    lane_from_blend, next_lane, obstacle_cleared, parse_highscore, plan_segment, resolve_hit,
-    run_speed, threat_after_stumble, threat_recover, CoinAward, DeathReason, Difficulty,
-    HitOutcome, ObstacleKind, PowerUpKind, SegmentPlan,
+    award_coins, clamp_lane, displayed_meters, displayed_score, format_highscore, is_caught,
+    is_new_highscore, lane_from_blend, milestone_crossed, next_lane, obstacle_cleared,
+    parse_highscore, plan_segment, resolve_hit, run_speed, threat_after_stumble, threat_recover,
+    CoinAward, DeathReason, Difficulty, HitOutcome, ObstacleKind, PowerUpKind, SegmentPlan,
 };
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
@@ -231,6 +231,61 @@ pub struct DustPuff {
 
 #[derive(Component)]
 pub struct PauseButton;
+
+#[derive(Component)]
+pub struct GoSplash {
+    pub timer: Timer,
+}
+
+#[derive(Component)]
+pub struct MilestoneToast {
+    pub timer: Timer,
+}
+
+#[derive(Component)]
+pub struct ScreenFlash {
+    pub timer: Timer,
+}
+
+#[derive(Component)]
+pub struct PowerChip {
+    pub kind: PowerUpKind,
+}
+
+#[derive(Component)]
+pub struct CoinHudPunch {
+    pub timer: Timer,
+}
+
+#[derive(Component)]
+pub struct Aura {
+    pub kind: AuraKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AuraKind {
+    Shield,
+    Magnet,
+}
+
+#[derive(Component)]
+pub struct Orbit {
+    pub angle: f32,
+    pub radius: f32,
+}
+
+#[derive(Component)]
+pub struct TorchFlicker {
+    pub timer: Timer,
+}
+
+#[derive(Component)]
+pub struct Spin {
+    pub speed: f32,
+}
+
+#[derive(Component)]
+pub struct ChaserWarn;
 
 #[derive(Component)]
 pub struct OnGameScreen;
