@@ -319,10 +319,10 @@ fn landing_puff(
     if *was_airborne && player.is_grounded {
         for i in 0..5 {
             let side = if i % 2 == 0 { -1.0 } else { 1.0 };
-            let texture = if i % 2 == 0 {
-                assets.smoke.clone()
-            } else {
-                assets.dust.clone()
+            let texture = match i % 3 {
+                0 => assets.smoke.clone(),
+                1 => assets.dust.clone(),
+                _ => assets.particle_fire.clone(),
             };
             commands.spawn((
                 SpriteBundle {
@@ -429,9 +429,14 @@ fn follow_boost_pack(
     *trail_acc += time.delta_seconds();
     if *trail_acc >= 0.05 {
         *trail_acc = 0.0;
+        let texture = if time.elapsed_seconds() as i32 % 2 == 0 {
+            assets.particle_flare.clone()
+        } else {
+            assets.particle_fire.clone()
+        };
         commands.spawn((
             SpriteBundle {
-                texture: assets.particle_flare.clone(),
+                texture,
                 sprite: Sprite {
                     custom_size: Some(Vec2::splat(22.0)),
                     color: Color::rgba(1.0, 0.55, 0.2, 0.75),
