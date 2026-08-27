@@ -1,8 +1,9 @@
 use crate::assets::GameAssets;
 use bevy::prelude::*;
 use fuzzy_runner::{
-    run_speed, Aura, AuraKind, CoinCollected, DustPuff, GameConfig, GameState, OnGameScreen, Orbit,
-    ParticleBurst, Player, PlayerState, RunStats, Spin, TorchFlicker, Vignette, GROUND_Y,
+    run_speed, safe_timer, try_despawn, Aura, AuraKind, CoinCollected, DustPuff, GameConfig,
+    GameState, OnGameScreen, Orbit, ParticleBurst, Player, PlayerState, RunStats, Spin,
+    TorchFlicker, Vignette, GROUND_Y,
 };
 
 pub struct FxPlugin;
@@ -190,7 +191,7 @@ fn lane_switch_afterimage(
                 ..default()
             },
             DustPuff {
-                timer: Timer::from_seconds(0.22, TimerMode::Once),
+                timer: safe_timer(0.22, TimerMode::Once),
             },
             OnGameScreen,
         ));
@@ -237,7 +238,7 @@ fn spawn_runner_dust(
             ..default()
         },
         DustPuff {
-            timer: Timer::from_seconds(0.28, TimerMode::Once),
+            timer: safe_timer(0.28, TimerMode::Once),
         },
         OnGameScreen,
     ));
@@ -255,7 +256,7 @@ fn tick_dust(
         transform.scale += Vec3::splat(1.4 * time.delta_seconds());
         sprite.color.set_a(1.0 - dust.timer.fraction());
         if dust.timer.finished() {
-            commands.entity(entity).despawn_recursive();
+            try_despawn(&mut commands, entity);
         }
     }
 }
@@ -309,7 +310,7 @@ fn spawn_speed_streaks(
             ..default()
         },
         DustPuff {
-            timer: Timer::from_seconds(0.18, TimerMode::Once),
+            timer: safe_timer(0.18, TimerMode::Once),
         },
         OnGameScreen,
     ));
@@ -345,7 +346,7 @@ fn spawn_coin_trails(
                 },
                 ParticleBurst {
                     velocity: Vec2::new(-80.0 - i as f32 * 12.0, 40.0),
-                    timer: Timer::from_seconds(0.28, TimerMode::Once),
+                    timer: safe_timer(0.28, TimerMode::Once),
                 },
                 OnGameScreen,
             ));

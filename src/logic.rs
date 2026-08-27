@@ -161,7 +161,7 @@ pub fn is_caught(threat: f32) -> bool {
 }
 
 pub fn displayed_score(distance: f32, coin_points: u32) -> u64 {
-    displayed_meters(distance) + coin_points as u64
+    displayed_meters(distance).saturating_add(coin_points as u64)
 }
 
 pub fn displayed_meters(distance: f32) -> u64 {

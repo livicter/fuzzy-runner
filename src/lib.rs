@@ -1,7 +1,12 @@
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 use bevy::prelude::*;
 use std::collections::VecDeque;
 
 pub mod logic;
+pub mod safe;
+
+pub use safe::{safe_duration, safe_timer, set_text, try_despawn};
 
 pub use logic::{
     award_coins, clamp_lane, combo_multiplier, countdown_label, displayed_meters, displayed_score,
@@ -487,11 +492,11 @@ pub const ROOF_COLOR: Color = Color::rgb(0.16, 0.12, 0.24);
 pub const ROOF_EDGE: Color = Color::rgb(0.28, 0.86, 1.0);
 
 pub fn lane_z(lane: i32) -> f32 {
-    LANE_Z[clamp_lane(lane) as usize]
+    *LANE_Z.get(clamp_lane(lane) as usize).unwrap_or(&1.4)
 }
 
 pub fn lane_scale(lane: i32) -> f32 {
-    LANE_SCALE[clamp_lane(lane) as usize]
+    *LANE_SCALE.get(clamp_lane(lane) as usize).unwrap_or(&0.70)
 }
 
 pub fn player_hitbox(player: &Player) -> Vec2 {
@@ -512,7 +517,7 @@ pub fn player_collision_pos(player_pos: Vec3, player: &Player) -> Vec3 {
 
 pub fn despawn_screen<T: Component>(to_despawn: Query<Entity, With<T>>, mut commands: Commands) {
     for entity in &to_despawn {
-        commands.entity(entity).despawn_recursive();
+        try_despawn(&mut commands, entity);
     }
 }
 
@@ -521,4 +526,19 @@ pub fn aabb_overlap(a_pos: Vec3, a_size: Vec2, b_pos: Vec3, b_size: Vec2) -> boo
         && (a_pos.x + a_size.x / 2.0) > (b_pos.x - b_size.x / 2.0)
         && (a_pos.y - a_size.y / 2.0) < (b_pos.y + b_size.y / 2.0)
         && (a_pos.y + a_size.y / 2.0) > (b_pos.y - b_size.y / 2.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lane_lookups_never_index_out_of_range() {
+        for lane in [-99, 0, 1, 2, 99] {
+            let _ = lane_z(lane);
+            let _ = lane_scale(lane);
+        }
+        assert!((lane_z(1) - 1.4).abs() < f32::EPSILON);
+        assert!((lane_scale(1) - 0.70).abs() < f32::EPSILON);
+    }
 }
