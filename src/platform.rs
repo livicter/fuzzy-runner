@@ -359,6 +359,31 @@ fn spawn_prop(
     ));
 }
 
+fn spawn_gap_pit(commands: &mut Commands, assets: &GameAssets, start: f32, length: f32) {
+    let tiles = ((length / 36.0).ceil() as i32).max(2);
+    for i in 0..tiles {
+        let x = start + 18.0 + i as f32 * 36.0;
+        spawn_prop(
+            commands,
+            assets.fireball.clone(),
+            x,
+            GROUND_Y - 28.0,
+            -0.4,
+            Vec2::new(40.0, 28.0),
+            Color::rgb(1.0, 0.45 + (i as f32 * 0.07) % 0.4, 0.15),
+        );
+        spawn_prop(
+            commands,
+            assets.spikes.clone(),
+            x,
+            GROUND_Y - 6.0,
+            -0.35,
+            Vec2::new(34.0, 18.0),
+            Color::rgb(1.0, 0.55, 0.25),
+        );
+    }
+}
+
 fn spawn_gap_edge(commands: &mut Commands, assets: &GameAssets, x: f32) {
     spawn_prop(
         commands,
@@ -714,6 +739,7 @@ fn spawn_plan(
         }
         SegmentPlan::Gap { length } => {
             spawn_gap_edge(commands, assets, cursor.next_x - 18.0);
+            spawn_gap_pit(commands, assets, cursor.next_x, length);
             spawn_gap_edge(commands, assets, cursor.next_x + length + 18.0);
             cursor.next_x += length;
         }

@@ -1,8 +1,8 @@
 use crate::assets::GameAssets;
 use bevy::prelude::*;
 use fuzzy_runner::{
-    run_speed, Aura, AuraKind, DustPuff, GameConfig, GameState, OnGameScreen, Orbit, Player,
-    PlayerState, RunStats, Spin, TorchFlicker, GROUND_Y,
+    run_speed, Aura, AuraKind, CoinCollected, DustPuff, GameConfig, GameState, OnGameScreen, Orbit,
+    ParticleBurst, Player, PlayerState, RunStats, Spin, TorchFlicker, Vignette, GROUND_Y,
 };
 
 pub struct FxPlugin;
@@ -16,11 +16,13 @@ impl Plugin for FxPlugin {
                     spawn_runner_dust,
                     tick_dust,
                     spawn_speed_streaks,
+                    spawn_coin_trails,
                     follow_auras,
                     orbit_magnet_coins,
                     flicker_torches,
                     spin_hazards,
                     lane_switch_afterimage,
+                    update_vignette,
                 )
                     .run_if(in_state(GameState::Playing)),
             );
@@ -311,4 +313,56 @@ fn spawn_speed_streaks(
         },
         OnGameScreen,
     ));
+}
+
+fn spawn_coin_trails(
+    mut commands: Commands,
+    assets: Res<GameAssets>,
+    player: Query<&Transform, With<Player>>,
+    mut events: EventReader<CoinCollected>,
+) {
+    let Ok(transform) = player.get_single() else {
+        return;
+    };
+    for event in events.read() {
+        let sparks = if event.combo >= 8 { 6 } else { 3 };
+        for i in 0..sparks {
+            let drift = -18.0 - i as f32 * 10.0;
+            commands.spawn((
+                SpriteBundle {
+                    texture: assets.particle_spark.clone(),
+                    sprite: Sprite {
+                        custom_size: Some(Vec2::splat(10.0 + i as f32 * 2.0)),
+                        color: Color::rgba(1.0, 0.85, 0.35, 0.8),
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(
+                        transform.translation.x + drift,
+                        transform.translation.y - 6.0 + (i as f32 * 4.0),
+                        transform.translation.z + 0.2,
+                    ),
+                    ..default()
+                },
+                ParticleBurst {
+                    velocity: Vec2::new(-80.0 - i as f32 * 12.0, 40.0),
+                    timer: Timer::from_seconds(0.28, TimerMode::Once),
+                },
+                OnGameScreen,
+            ));
+        }
+    }
+}
+
+fn update_vignette(
+    stats: Res<RunStats>,
+    config: Res<GameConfig>,
+    mut query: Query<&mut BackgroundColor, With<Vignette>>,
+) {
+    let speed = run_speed(stats.distance, config.difficulty, stats.boost_active());
+    let heat = ((speed - 340.0) / 380.0).clamp(0.0, 1.0);
+    let boost = if stats.boost_active() { 0.12 } else { 0.0 };
+    let alpha = 0.10 + heat * 0.28 + boost;
+    for mut color in &mut query {
+        *color = Color::rgba(0.04, 0.0, 0.08, alpha).into();
+    }
 }

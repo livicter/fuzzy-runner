@@ -100,12 +100,17 @@ fn collect_coins(
             continue;
         }
         if aabb_overlap(origin, hitbox, transform.translation, Vec2::splat(28.0)) || magnet_grab {
-            let award = award_coins(coin.value, stats.multiplier_active());
+            let (combo, timer) = fuzzy_runner::register_combo(stats.combo);
+            stats.combo = combo;
+            stats.combo_timer = timer;
+            stats.best_combo = stats.best_combo.max(combo);
+            let award = award_coins(coin.value, stats.multiplier_active(), combo);
             stats.coins += award.coins;
             stats.coin_points += award.points;
             collected.send(CoinCollected {
                 amount: award.coins,
                 points: award.points,
+                combo,
             });
             commands.entity(entity).despawn_recursive();
         }
@@ -166,14 +171,23 @@ fn spawn_coin_feedback(
     };
     for event in events.read() {
         let pos = player_transform.translation + Vec3::new(8.0, 46.0, 8.0);
+        let (label, size, color) = if event.combo >= 5 {
+            (
+                format!("+{}  x{}", event.points, event.combo),
+                32.0,
+                Color::rgb(1.0, 0.55, 0.2),
+            )
+        } else {
+            (format!("+{}", event.points), 26.0, NEON_GOLD)
+        };
         commands.spawn((
             Text2dBundle {
                 text: Text::from_section(
-                    format!("+{}", event.points),
+                    label,
                     TextStyle {
                         font: assets.font_hud.clone(),
-                        font_size: 26.0,
-                        color: NEON_GOLD,
+                        font_size: size,
+                        color,
                     },
                 ),
                 transform: Transform::from_translation(pos),

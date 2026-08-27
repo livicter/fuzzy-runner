@@ -15,8 +15,8 @@ use crate::fx::FxPlugin;
 use background::BackgroundPlugin;
 use collectibles::CollectiblesPlugin;
 use fuzzy_runner::{
-    Distance, GameConfig, GameState, HighScores, LastRun, OnGameScreen, PlatformQueue, RunStats,
-    SettingsOrigin, TrackCursor,
+    CameraImpulse, Countdown, Distance, GameConfig, GameState, HighScores, IgnoreSwipe, LastRun,
+    OnGameScreen, PendingCommands, PlatformQueue, RunStats, SettingsOrigin, TrackCursor,
 };
 use platform::PlatformPlugin;
 use player::PlayerPlugin;
@@ -39,6 +39,10 @@ fn main() {
         .init_resource::<HighScores>()
         .init_resource::<SettingsOrigin>()
         .init_resource::<TrackCursor>()
+        .init_resource::<Countdown>()
+        .init_resource::<CameraImpulse>()
+        .init_resource::<PendingCommands>()
+        .init_resource::<IgnoreSwipe>()
         .insert_resource(GameConfig::default())
         .add_plugins((
             AssetsPlugin,
@@ -62,6 +66,9 @@ fn reset_session(
     platform_queue: &mut PlatformQueue,
     stats: &mut RunStats,
     track_cursor: &mut TrackCursor,
+    countdown: &mut Countdown,
+    shake: &mut CameraImpulse,
+    pending: &mut PendingCommands,
 ) {
     for entity in game_screen_entities {
         commands.entity(entity).despawn_recursive();
@@ -70,6 +77,9 @@ fn reset_session(
     platform_queue.0.clear();
     stats.reset();
     *track_cursor = TrackCursor::default();
+    countdown.reset();
+    shake.trauma = 0.0;
+    pending.commands.clear();
 }
 
 fn cleanup_then_replay(
@@ -79,6 +89,9 @@ fn cleanup_then_replay(
     mut platform_queue: ResMut<PlatformQueue>,
     mut stats: ResMut<RunStats>,
     mut track_cursor: ResMut<TrackCursor>,
+    mut countdown: ResMut<Countdown>,
+    mut shake: ResMut<CameraImpulse>,
+    mut pending: ResMut<PendingCommands>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     reset_session(
@@ -88,6 +101,9 @@ fn cleanup_then_replay(
         &mut platform_queue,
         &mut stats,
         &mut track_cursor,
+        &mut countdown,
+        &mut shake,
+        &mut pending,
     );
     next_state.set(GameState::Playing);
 }
@@ -99,6 +115,9 @@ fn cleanup_then_menu(
     mut platform_queue: ResMut<PlatformQueue>,
     mut stats: ResMut<RunStats>,
     mut track_cursor: ResMut<TrackCursor>,
+    mut countdown: ResMut<Countdown>,
+    mut shake: ResMut<CameraImpulse>,
+    mut pending: ResMut<PendingCommands>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     reset_session(
@@ -108,6 +127,9 @@ fn cleanup_then_menu(
         &mut platform_queue,
         &mut stats,
         &mut track_cursor,
+        &mut countdown,
+        &mut shake,
+        &mut pending,
     );
     next_state.set(GameState::Menu);
 }

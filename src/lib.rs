@@ -4,10 +4,11 @@ use std::collections::VecDeque;
 pub mod logic;
 
 pub use logic::{
-    award_coins, clamp_lane, displayed_meters, displayed_score, format_highscore, is_caught,
-    is_new_highscore, lane_from_blend, milestone_crossed, next_lane, obstacle_cleared,
-    parse_highscore, plan_segment, resolve_hit, run_speed, threat_after_stumble, threat_recover,
-    CoinAward, DeathReason, Difficulty, HitOutcome, ObstacleKind, PowerUpKind, SegmentPlan,
+    award_coins, clamp_lane, combo_multiplier, countdown_label, displayed_meters, displayed_score,
+    format_highscore, is_caught, is_new_highscore, lane_from_blend, milestone_crossed, next_lane,
+    obstacle_cleared, parse_highscore, plan_segment, register_combo, resolve_hit, run_speed,
+    threat_after_stumble, threat_recover, tick_combo, CoinAward, DeathReason, Difficulty,
+    HitOutcome, ObstacleKind, PowerUpKind, SegmentPlan,
 };
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
@@ -65,7 +66,9 @@ pub struct Enemy {
 }
 
 #[derive(Component)]
-pub struct Chaser;
+pub struct Chaser {
+    pub rank: u8,
+}
 
 #[derive(Resource, Clone, Debug)]
 pub struct GameConfig {
@@ -89,6 +92,9 @@ pub struct RunStats {
     pub magnet_timer: f32,
     pub boost_timer: f32,
     pub threat: f32,
+    pub combo: u32,
+    pub combo_timer: f32,
+    pub best_combo: u32,
 }
 
 impl RunStats {
@@ -120,6 +126,7 @@ pub struct LastRun {
     pub score: u64,
     pub reason: DeathReason,
     pub new_high_score: bool,
+    pub best_combo: u32,
 }
 
 #[derive(Resource, Clone, Debug)]
@@ -303,6 +310,78 @@ pub struct CoinText;
 pub struct ScoreText;
 
 #[derive(Component)]
+pub struct ComboText;
+
+#[derive(Component)]
+pub struct TitlePreview;
+
+#[derive(Component)]
+pub struct Vignette;
+
+#[derive(Component)]
+pub struct TouchControl(pub RunnerCommand);
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RunnerCommand {
+    LaneLeft,
+    LaneRight,
+    Jump,
+    Slide,
+}
+
+#[derive(Resource, Default)]
+pub struct PendingCommands {
+    pub commands: Vec<RunnerCommand>,
+}
+
+impl PendingCommands {
+    pub fn push(&mut self, command: RunnerCommand) {
+        self.commands.push(command);
+    }
+
+    pub fn take(&mut self) -> Vec<RunnerCommand> {
+        std::mem::take(&mut self.commands)
+    }
+}
+
+#[derive(Resource, Default)]
+pub struct IgnoreSwipe(pub bool);
+
+#[derive(Resource)]
+pub struct Countdown {
+    pub remaining: f32,
+}
+
+impl Default for Countdown {
+    fn default() -> Self {
+        Self {
+            remaining: COUNTDOWN_DURATION,
+        }
+    }
+}
+
+impl Countdown {
+    pub fn reset(&mut self) {
+        self.remaining = COUNTDOWN_DURATION;
+    }
+
+    pub fn active(&self) -> bool {
+        self.remaining > 0.0
+    }
+}
+
+#[derive(Resource, Default)]
+pub struct CameraImpulse {
+    pub trauma: f32,
+}
+
+impl CameraImpulse {
+    pub fn add(&mut self, amount: f32) {
+        self.trauma = (self.trauma + amount).clamp(0.0, 1.0);
+    }
+}
+
+#[derive(Component)]
 pub struct StatusText;
 
 #[derive(Component)]
@@ -338,6 +417,7 @@ pub struct DeathEvent {
 pub struct CoinCollected {
     pub amount: u32,
     pub points: u32,
+    pub combo: u32,
 }
 
 #[derive(Event, Clone, Copy, Debug)]
@@ -389,6 +469,9 @@ pub const MAGNET_RADIUS: f32 = 170.0;
 pub const CHASER_FAR_GAP: f32 = 340.0;
 pub const CHASER_NEAR_GAP: f32 = 58.0;
 pub const MAX_RUN_SPEED: f32 = 720.0;
+pub const COUNTDOWN_DURATION: f32 = 3.2;
+pub const COMBO_WINDOW: f32 = 1.25;
+pub const SHAKE_DECAY: f32 = 3.2;
 
 // --- ENEMY ---
 pub const ENEMY_SPEED: f32 = 270.0;

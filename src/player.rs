@@ -1,10 +1,11 @@
 use bevy::prelude::*;
 use fuzzy_runner::{
     aabb_overlap, clamp_lane, lane_from_blend, lane_scale, lane_z, next_lane, player_collision_pos,
-    player_hitbox, resolve_hit, run_speed, AnimationIndices, AnimationTimer, DeathEvent,
-    DeathReason, Distance, GameConfig, GameState, HitOutcome, OnGameScreen, Platform, Player,
-    PlayerState, PlayerStumbled, RunStats, CAMERA_LOOKAHEAD, GRAVITY, GROUND_Y,
-    INVINCIBLE_DURATION, LANE_SWITCH_SPEED, PLATFORM_THICKNESS, PLAYER_JUMP_STRENGTH, PLAYER_SIZE,
+    player_hitbox, resolve_hit, run_speed, tick_combo, AnimationIndices, AnimationTimer,
+    CameraImpulse, Countdown, DeathEvent, DeathReason, Distance, GameConfig, GameState, HitOutcome,
+    IgnoreSwipe, OnGameScreen, PendingCommands, Platform, Player, PlayerState, PlayerStumbled,
+    RunnerCommand, RunStats, CAMERA_LOOKAHEAD, GRAVITY, GROUND_Y, INVINCIBLE_DURATION,
+    LANE_SWITCH_SPEED, PLATFORM_THICKNESS, PLAYER_JUMP_STRENGTH, PLAYER_SIZE, SHAKE_DECAY,
     SLIDE_DURATION, STUMBLE_DURATION,
 };
 
@@ -17,14 +18,6 @@ struct SwipeTracker {
     origin: Option<Vec2>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum RunnerAction {
-    LaneLeft,
-    LaneRight,
-    Jump,
-    Slide,
-}
-
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -32,7 +25,7 @@ impl Plugin for PlayerPlugin {
         app.init_resource::<SwipeTracker>()
             .add_event::<DeathEvent>()
             .add_event::<PlayerStumbled>()
-            .add_systems(OnEnter(GameState::Playing), spawn_player)
+            .add_systems(OnEnter(GameState::Playing), (reset_run_start, spawn_player).chain())
             .add_systems(
                 Update,
                 (
@@ -100,34 +93,57 @@ fn spawn_player(
     ));
 }
 
-fn tick_run_timers(time: Res<Time>, config: Res<GameConfig>, mut stats: ResMut<RunStats>) {
+fn tick_run_timers(
+    time: Res<Time>,
+    config: Res<GameConfig>,
+    mut stats: ResMut<RunStats>,
+    mut countdown: ResMut<Countdown>,
+) {
     let dt = time.delta_seconds();
+    if countdown.active() {
+        countdown.remaining = (countdown.remaining - dt).max(0.0);
+    }
     stats.multiplier_timer = (stats.multiplier_timer - dt).max(0.0);
     stats.magnet_timer = (stats.magnet_timer - dt).max(0.0);
     stats.boost_timer = (stats.boost_timer - dt).max(0.0);
+    let (combo, timer) = tick_combo(stats.combo, stats.combo_timer, dt);
+    stats.combo = combo;
+    stats.combo_timer = timer;
     if stats.threat < 1.0 {
         stats.threat =
             fuzzy_runner::threat_recover(stats.threat, dt, config.difficulty.recover_rate());
     }
 }
 
-fn swipe_action(start: Vec2, end: Vec2) -> Option<RunnerAction> {
+fn swipe_action(start: Vec2, end: Vec2) -> Option<RunnerCommand> {
     let delta = end - start;
     if delta.length() < SWIPE_THRESHOLD {
         return None;
     }
     if delta.x.abs() > delta.y.abs() {
         if delta.x < 0.0 {
-            Some(RunnerAction::LaneLeft)
+            Some(RunnerCommand::LaneLeft)
         } else {
-            Some(RunnerAction::LaneRight)
+            Some(RunnerCommand::LaneRight)
         }
     } else if delta.y < 0.0 {
         // Screen space: y grows downward, so a swipe up has negative y.
-        Some(RunnerAction::Jump)
+        Some(RunnerCommand::Jump)
     } else {
-        Some(RunnerAction::Slide)
+        Some(RunnerCommand::Slide)
     }
+}
+
+fn reset_run_start(
+    player_query: Query<Entity, With<Player>>,
+    mut countdown: ResMut<Countdown>,
+    mut shake: ResMut<CameraImpulse>,
+) {
+    if player_query.get_single().is_ok() {
+        return;
+    }
+    countdown.reset();
+    shake.trauma = 0.0;
 }
 
 fn handle_actions(
@@ -136,6 +152,8 @@ fn handle_actions(
     windows: Query<&Window>,
     touches: Res<Touches>,
     mut swipe: ResMut<SwipeTracker>,
+    mut pending: ResMut<PendingCommands>,
+    mut ignore_swipe: ResMut<IgnoreSwipe>,
     mut player_query: Query<&mut Player>,
     time: Res<Time>,
 ) {
@@ -150,28 +168,29 @@ fn handle_actions(
     player.invincible_timer.tick(time.delta());
 
     if player.state == PlayerState::Stumbling && !player.stumble_timer.finished() {
+        pending.take();
         return;
     }
 
-    let mut queued = Vec::new();
+    let mut queued = pending.take();
     if keyboard_input.just_pressed(KeyCode::KeyA) || keyboard_input.just_pressed(KeyCode::ArrowLeft)
     {
-        queued.push(RunnerAction::LaneLeft);
+        queued.push(RunnerCommand::LaneLeft);
     }
     if keyboard_input.just_pressed(KeyCode::KeyD)
         || keyboard_input.just_pressed(KeyCode::ArrowRight)
     {
-        queued.push(RunnerAction::LaneRight);
+        queued.push(RunnerCommand::LaneRight);
     }
     if keyboard_input.just_pressed(KeyCode::KeyW)
         || keyboard_input.just_pressed(KeyCode::ArrowUp)
         || keyboard_input.just_pressed(KeyCode::Space)
     {
-        queued.push(RunnerAction::Jump);
+        queued.push(RunnerCommand::Jump);
     }
     if keyboard_input.just_pressed(KeyCode::KeyS) || keyboard_input.just_pressed(KeyCode::ArrowDown)
     {
-        queued.push(RunnerAction::Slide);
+        queued.push(RunnerCommand::Slide);
     }
 
     if mouse_input.just_pressed(MouseButton::Left) {
@@ -180,32 +199,40 @@ fn handle_actions(
         }
     }
     if mouse_input.just_released(MouseButton::Left) {
-        if let (Some(start), Ok(window)) = (swipe.origin.take(), windows.get_single()) {
-            if let Some(end) = window.cursor_position() {
-                if let Some(action) = swipe_action(start, end) {
-                    queued.push(action);
+        let skip = ignore_swipe.0;
+        ignore_swipe.0 = false;
+        if !skip {
+            if let (Some(start), Ok(window)) = (swipe.origin.take(), windows.get_single()) {
+                if let Some(end) = window.cursor_position() {
+                    if let Some(action) = swipe_action(start, end) {
+                        queued.push(action);
+                    }
                 }
             }
+        } else {
+            swipe.origin = None;
         }
     }
-    for touch in touches.iter_just_released() {
-        if let Some(action) = swipe_action(touch.start_position(), touch.position()) {
-            queued.push(action);
+    if !ignore_swipe.0 {
+        for touch in touches.iter_just_released() {
+            if let Some(action) = swipe_action(touch.start_position(), touch.position()) {
+                queued.push(action);
+            }
         }
     }
 
     for action in queued {
         match action {
-            RunnerAction::LaneLeft => {
+            RunnerCommand::LaneLeft => {
                 player.target_lane = next_lane(player.target_lane, -1);
             }
-            RunnerAction::LaneRight => {
+            RunnerCommand::LaneRight => {
                 player.target_lane = next_lane(player.target_lane, 1);
             }
-            RunnerAction::Jump => {
+            RunnerCommand::Jump => {
                 player.jump_buffer.reset();
             }
-            RunnerAction::Slide => {
+            RunnerCommand::Slide => {
                 if player.is_grounded {
                     player.slide_timer.reset();
                     player.state = PlayerState::Sliding;
@@ -330,11 +357,17 @@ fn check_for_death(
 fn camera_follow_player(
     player_query: Query<&Transform, With<Player>>,
     mut camera_query: Query<&mut Transform, (With<Camera>, Without<Player>)>,
+    mut shake: ResMut<CameraImpulse>,
+    time: Res<Time>,
 ) {
     if let Ok(player_transform) = player_query.get_single() {
         if let Ok(mut camera_transform) = camera_query.get_single_mut() {
-            camera_transform.translation.x = player_transform.translation.x + CAMERA_LOOKAHEAD;
-            camera_transform.translation.y = 20.0;
+            shake.trauma = (shake.trauma - time.delta_seconds() * SHAKE_DECAY).max(0.0);
+            let mag = shake.trauma * shake.trauma * 16.0;
+            let ox = (rand::random::<f32>() - 0.5) * 2.0 * mag;
+            let oy = (rand::random::<f32>() - 0.5) * 2.0 * mag;
+            camera_transform.translation.x = player_transform.translation.x + CAMERA_LOOKAHEAD + ox;
+            camera_transform.translation.y = 20.0 + oy;
         }
     }
 }
@@ -344,6 +377,7 @@ fn apply_forces(
     time: Res<Time>,
     config: Res<GameConfig>,
     stats: Res<RunStats>,
+    countdown: Res<Countdown>,
 ) {
     if let Ok(mut player) = player_query.get_single_mut() {
         if !player.is_grounded {
@@ -352,6 +386,9 @@ fn apply_forces(
         let mut speed = run_speed(stats.distance, config.difficulty, stats.boost_active());
         if player.state == PlayerState::Stumbling {
             speed *= 0.55;
+        }
+        if countdown.active() {
+            speed = 0.0;
         }
         player.velocity.x = speed;
 
@@ -392,6 +429,7 @@ fn check_collisions(
     obstacle_query: Query<(&Transform, &fuzzy_runner::Obstacle), Without<Player>>,
     mut stats: ResMut<RunStats>,
     config: Res<GameConfig>,
+    mut shake: ResMut<CameraImpulse>,
     mut next_state: ResMut<NextState<GameState>>,
     mut deaths: EventWriter<DeathEvent>,
     mut stumbled: EventWriter<PlayerStumbled>,
@@ -459,6 +497,9 @@ fn check_collisions(
                 player.stumble_timer.reset();
                 player.invincible_timer.reset();
                 player.state = PlayerState::Stumbling;
+                shake.add(0.85);
+                stats.combo = 0;
+                stats.combo_timer = 0.0;
                 stats.threat = fuzzy_runner::threat_after_stumble(
                     stats.threat,
                     config.difficulty.stumble_threat(),
