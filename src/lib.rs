@@ -9,11 +9,11 @@ pub mod safe;
 pub use safe::{safe_duration, safe_timer, set_text, try_despawn};
 
 pub use logic::{
-    award_coins, clamp_lane, combo_multiplier, countdown_label, displayed_meters, displayed_score,
-    format_highscore, is_caught, is_new_highscore, lane_from_blend, milestone_crossed, next_lane,
-    obstacle_cleared, parse_highscore, plan_segment, register_combo, resolve_hit, run_speed,
-    threat_after_stumble, threat_recover, tick_combo, CoinAward, DeathReason, Difficulty,
-    HitOutcome, ObstacleKind, PowerUpKind, SegmentPlan,
+    award_coins, clamp_lane, combo_multiplier, combo_timer_fraction, countdown_label,
+    displayed_meters, displayed_score, format_highscore, is_caught, is_near_miss, is_new_highscore,
+    lane_from_blend, milestone_crossed, next_lane, obstacle_cleared, parse_highscore, plan_segment,
+    register_combo, resolve_hit, run_speed, threat_after_stumble, threat_recover, tick_combo,
+    CoinAward, DeathReason, Difficulty, HitOutcome, ObstacleKind, PowerUpKind, SegmentPlan,
 };
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
@@ -316,6 +316,16 @@ pub struct ScoreText;
 
 #[derive(Component)]
 pub struct ComboText;
+
+#[derive(Component)]
+pub struct ComboFill;
+
+#[derive(Component)]
+pub struct SkyProp {
+    pub offset: Vec3,
+    pub bob: f32,
+    pub drift: f32,
+}
 
 #[derive(Component)]
 pub struct TitlePreview;

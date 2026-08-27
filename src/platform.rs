@@ -158,7 +158,27 @@ fn spawn_obstacle(
             ));
         }
         ObstacleKind::HighBarrier => {
-            if rand::random::<f32>() > 0.45 {
+            let roll = rand::random::<f32>();
+            if roll > 0.66 {
+                commands.spawn((
+                    SpriteBundle {
+                        texture: assets.spike_ball.clone(),
+                        sprite: Sprite {
+                            custom_size: Some(Vec2::splat(52.0 * scale)),
+                            ..default()
+                        },
+                        transform: Transform::from_xyz(x, GROUND_Y + 90.0, lane_z(lane)),
+                        ..default()
+                    },
+                    Obstacle {
+                        kind,
+                        lane,
+                        size: Vec2::new(56.0, 40.0),
+                    },
+                    Spin { speed: 6.5 },
+                    OnGameScreen,
+                ));
+            } else if roll > 0.33 {
                 commands.spawn((
                     SpriteBundle {
                         texture: assets.saw.clone(),
@@ -365,12 +385,39 @@ fn spawn_gap_pit(commands: &mut Commands, assets: &GameAssets, start: f32, lengt
         let x = start + 18.0 + i as f32 * 36.0;
         spawn_prop(
             commands,
-            assets.fireball.clone(),
+            assets.stone_broken.clone(),
             x,
-            GROUND_Y - 28.0,
-            -0.4,
-            Vec2::new(40.0, 28.0),
-            Color::rgb(1.0, 0.45 + (i as f32 * 0.07) % 0.4, 0.15),
+            GROUND_Y - 18.0,
+            -0.45,
+            Vec2::new(44.0, 22.0),
+            Color::rgb(0.55, 0.32, 0.28),
+        );
+        spawn_prop(
+            commands,
+            assets.lava.clone(),
+            x,
+            GROUND_Y - 36.0,
+            -0.42,
+            Vec2::new(42.0, 32.0),
+            Color::rgb(1.0, 0.45 + (i as f32 * 0.07) % 0.4, 0.12),
+        );
+        spawn_prop(
+            commands,
+            assets.lava_top.clone(),
+            x,
+            GROUND_Y - 22.0,
+            -0.40,
+            Vec2::new(42.0, 20.0),
+            Color::rgb(1.0, 0.62, 0.18),
+        );
+        spawn_prop(
+            commands,
+            assets.particle_flame.clone(),
+            x,
+            GROUND_Y - 8.0,
+            -0.38,
+            Vec2::new(28.0, 36.0),
+            Color::rgba(1.0, 0.55, 0.15, 0.7),
         );
         spawn_prop(
             commands,
@@ -525,7 +572,7 @@ fn spawn_scenery(commands: &mut Commands, assets: &GameAssets, x: f32, roll: f32
         _ => {}
     }
 
-    match ((roll * 8.0) as i32).rem_euclid(11) {
+    match ((roll * 8.0) as i32).rem_euclid(12) {
         0 => {
             commands.spawn((
                 SpriteBundle {
@@ -625,6 +672,15 @@ fn spawn_scenery(commands: &mut Commands, assets: &GameAssets, x: f32, roll: f32
             Vec2::new(40.0, 40.0),
             Color::rgb(0.85, 0.75, 1.0),
         ),
+        10 => spawn_prop(
+            commands,
+            assets.idol.clone(),
+            x,
+            GROUND_Y + 48.0,
+            3.26,
+            Vec2::new(48.0, 56.0),
+            Color::rgb(1.0, 0.86, 0.45),
+        ),
         _ => spawn_prop(
             commands,
             assets.plant_purple.clone(),
@@ -634,6 +690,40 @@ fn spawn_scenery(commands: &mut Commands, assets: &GameAssets, x: f32, roll: f32
             Vec2::new(36.0, 52.0),
             Color::WHITE,
         ),
+    }
+
+    if ((roll * 13.0) as i32).rem_euclid(4) == 0 {
+        spawn_prop(
+            commands,
+            assets.idol.clone(),
+            x + 54.0,
+            GROUND_Y + 50.0,
+            3.12,
+            Vec2::new(44.0, 52.0),
+            Color::rgb(0.95, 0.78, 0.4),
+        );
+    }
+    if ((roll * 19.0) as i32).rem_euclid(5) == 1 {
+        spawn_prop(
+            commands,
+            assets.smoke.clone(),
+            x - 24.0,
+            GROUND_Y + 64.0,
+            3.05,
+            Vec2::new(36.0, 40.0),
+            Color::rgba(0.75, 0.62, 0.55, 0.4),
+        );
+    }
+    if ((roll * 23.0) as i32).rem_euclid(6) == 2 {
+        spawn_prop(
+            commands,
+            assets.particle_magic.clone(),
+            x + 18.0,
+            GROUND_Y + 86.0,
+            3.08,
+            Vec2::new(22.0, 22.0),
+            Color::rgba(0.85, 0.55, 1.0, 0.45),
+        );
     }
 }
 
