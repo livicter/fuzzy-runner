@@ -2,13 +2,33 @@
 
 A cyberpunk endless runner built with Bevy. The old rooftop platformer is now a **Temple Run-style** chase: you always sprint forward, the city unrolls under your feet, and the horde closes in the moment you stumble.
 
+![Rooftop run — 90m, coins ahead, horde on your heels](gameplay/run.png)
+
+Every attempt is scored. Beat your own high score.
+
+-----
+
+## Highlights
+
+Live captures from a real run. More stills live in [`gameplay/`](gameplay/).
+
+| Title | 3-2-1-GO | Coin streak |
+| --- | --- | --- |
+| ![Title](gameplay/title.png) | ![GO](gameplay/go.png) | ![Combo](gameplay/combo.png) |
+| ![Lava pit](gameplay/lava.png) | ![Horde closing in](gameplay/horde.png) | ![Paused](gameplay/pause.png) |
+
+- **Title** — moonlit city, idle runner, tap **RUN**
+- **GO** — 3-2-1 countdown, then the horde is already behind you
+- **Combo** — coin streak with a timer bar under the HUD
+- **Lava** — jump the broken rooftop; fire and spikes fill the pit
+- **Horde** — clean running opens a gap; stumbles slam it shut
+- **Pause** — resume, new run, settings, or back to the menu
+
 -----
 
 ## The Run
 
 You are being hunted across neon rooftops. There is no walking back. Speed climbs the farther you go, gaps open up, and a zombie chaser rides your blind spot. Trip twice — or let the horde catch up — and the run is over.
-
-Every attempt is scored. Beat your own high score.
 
 -----
 
