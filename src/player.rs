@@ -1,12 +1,12 @@
 use bevy::prelude::*;
 use fuzzy_runner::{
     aabb_overlap, clamp_lane, lane_from_blend, lane_scale, lane_z, next_lane, player_collision_pos,
-    player_hitbox, resolve_hit, run_speed, tick_combo, AnimationIndices, AnimationTimer,
-    CameraImpulse, Countdown, DeathEvent, DeathReason, Distance, GameConfig, GameState, HitOutcome,
-    IgnoreSwipe, OnGameScreen, PendingCommands, Platform, Player, PlayerState, PlayerStumbled,
-    RunnerCommand, RunStats, CAMERA_LOOKAHEAD, GRAVITY, GROUND_Y, INVINCIBLE_DURATION,
-    LANE_SWITCH_SPEED, PLATFORM_THICKNESS, PLAYER_JUMP_STRENGTH, PLAYER_SIZE, SHAKE_DECAY,
-    SLIDE_DURATION, STUMBLE_DURATION,
+    player_hitbox, resolve_hit, run_speed, safe_duration, safe_timer, tick_combo, AnimationIndices,
+    AnimationTimer, CameraImpulse, Countdown, DeathEvent, DeathReason, Distance, GameConfig,
+    GameState, HitOutcome, IgnoreSwipe, OnGameScreen, PendingCommands, Platform, Player,
+    PlayerState, PlayerStumbled, RunnerCommand, RunStats, CAMERA_LOOKAHEAD, GRAVITY, GROUND_Y,
+    INVINCIBLE_DURATION, LANE_SWITCH_SPEED, PLATFORM_THICKNESS, PLAYER_JUMP_STRENGTH, PLAYER_SIZE,
+    SHAKE_DECAY, SLIDE_DURATION, STUMBLE_DURATION,
 };
 
 const COYOTE_TIME_SECONDS: f32 = 0.12;
@@ -76,11 +76,11 @@ fn spawn_player(
         Player {
             velocity: Vec2::ZERO,
             is_grounded: true,
-            coyote_time: Timer::from_seconds(COYOTE_TIME_SECONDS, TimerMode::Once),
-            jump_buffer: Timer::from_seconds(JUMP_BUFFER_SECONDS, TimerMode::Once),
-            slide_timer: Timer::from_seconds(SLIDE_DURATION, TimerMode::Once),
-            stumble_timer: Timer::from_seconds(STUMBLE_DURATION, TimerMode::Once),
-            invincible_timer: Timer::from_seconds(INVINCIBLE_DURATION, TimerMode::Once),
+            coyote_time: safe_timer(COYOTE_TIME_SECONDS, TimerMode::Once),
+            jump_buffer: safe_timer(JUMP_BUFFER_SECONDS, TimerMode::Once),
+            slide_timer: safe_timer(SLIDE_DURATION, TimerMode::Once),
+            stumble_timer: safe_timer(STUMBLE_DURATION, TimerMode::Once),
+            invincible_timer: safe_timer(INVINCIBLE_DURATION, TimerMode::Once),
             state: PlayerState::Running,
             lane: 1,
             lane_blend: 1.0,
@@ -88,7 +88,7 @@ fn spawn_player(
             has_shield: false,
         },
         AnimationIndices { first: 9, last: 10 },
-        AnimationTimer(Timer::from_seconds(0.08, TimerMode::Repeating)),
+        AnimationTimer(safe_timer(0.08, TimerMode::Repeating)),
         OnGameScreen,
     ));
 }
@@ -289,7 +289,7 @@ fn animate_sprite(
         } else {
             0.10
         };
-        timer.set_duration(std::time::Duration::from_secs_f32(speed_factor));
+        timer.set_duration(safe_duration(speed_factor));
         timer.tick(time.delta());
         if timer.just_finished() {
             let (first, last) = match player.state {

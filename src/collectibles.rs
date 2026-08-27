@@ -1,9 +1,10 @@
 use crate::assets::GameAssets;
 use bevy::prelude::*;
 use fuzzy_runner::{
-    aabb_overlap, award_coins, lane_from_blend, player_collision_pos, player_hitbox, Bob, Coin,
-    CoinCollected, CoinSpin, FloatingPopup, GameState, OnGameScreen, ParticleBurst, Player,
-    PowerUp, PowerUpCollected, RunStats, MAGNET_RADIUS, NEON_GOLD,
+    aabb_overlap, award_coins, lane_from_blend, player_collision_pos, player_hitbox, safe_timer,
+    try_despawn, Bob, Coin, CoinCollected, CoinSpin, FloatingPopup, GameState,
+    OnGameScreen, ParticleBurst, Player, PowerUp, PowerUpCollected, RunStats, MAGNET_RADIUS,
+    NEON_GOLD,
 };
 use std::f32::consts::TAU;
 
@@ -105,14 +106,14 @@ fn collect_coins(
             stats.combo_timer = timer;
             stats.best_combo = stats.best_combo.max(combo);
             let award = award_coins(coin.value, stats.multiplier_active(), combo);
-            stats.coins += award.coins;
-            stats.coin_points += award.points;
+            stats.coins = stats.coins.saturating_add(award.coins);
+            stats.coin_points = stats.coin_points.saturating_add(award.points);
             collected.send(CoinCollected {
                 amount: award.coins,
                 points: award.points,
                 combo,
             });
-            commands.entity(entity).despawn_recursive();
+            try_despawn(&mut commands, entity);
         }
     }
 }
@@ -156,7 +157,7 @@ fn collect_power_ups(
         collected.send(PowerUpCollected {
             kind: power_up.kind,
         });
-        commands.entity(entity).despawn_recursive();
+        try_despawn(&mut commands, entity);
     }
 }
 
@@ -194,7 +195,7 @@ fn spawn_coin_feedback(
                 ..default()
             },
             FloatingPopup {
-                timer: Timer::from_seconds(0.55, TimerMode::Once),
+                timer: safe_timer(0.55, TimerMode::Once),
             },
             OnGameScreen,
         ));
@@ -219,7 +220,7 @@ fn spawn_coin_feedback(
                 },
                 ParticleBurst {
                     velocity: dir * (120.0 + (i as f32) * 8.0),
-                    timer: Timer::from_seconds(0.38, TimerMode::Once),
+                    timer: safe_timer(0.38, TimerMode::Once),
                 },
                 OnGameScreen,
             ));
@@ -240,7 +241,7 @@ fn tick_popups(
             section.style.color.set_a(alpha);
         }
         if popup.timer.finished() {
-            commands.entity(entity).despawn_recursive();
+            try_despawn(&mut commands, entity);
         }
     }
 }
@@ -258,7 +259,7 @@ fn tick_particles(
         sprite.color.set_a(fade);
         transform.scale = Vec3::splat(0.6 + fade * 0.6);
         if burst.timer.finished() {
-            commands.entity(entity).despawn_recursive();
+            try_despawn(&mut commands, entity);
         }
     }
 }

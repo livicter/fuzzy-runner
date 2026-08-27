@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use fuzzy_runner::{
-    is_caught, lane_scale, AnimationIndices, AnimationTimer, Chaser, Enemy, GameState,
-    OnGameScreen, Player, RunStats, CHASER_FAR_GAP, CHASER_NEAR_GAP, ENEMY_SIZE, GROUND_Y,
-    PLATFORM_THICKNESS,
+    is_caught, lane_scale, safe_duration, safe_timer, AnimationIndices, AnimationTimer, Chaser,
+    Enemy, GameState, OnGameScreen, Player, RunStats, CHASER_FAR_GAP, CHASER_NEAR_GAP, ENEMY_SIZE,
+    GROUND_Y, PLATFORM_THICKNESS,
 };
 
 pub struct EnemyPlugin;
@@ -62,7 +62,7 @@ fn spawn_horde(
             },
             Chaser { rank },
             AnimationIndices { first: 9, last: 10 },
-            AnimationTimer(Timer::from_seconds(0.08 + rank as f32 * 0.02, TimerMode::Repeating)),
+            AnimationTimer(safe_timer(0.08 + rank as f32 * 0.02, TimerMode::Repeating)),
             OnGameScreen,
         ));
     }
@@ -116,7 +116,7 @@ fn animate_chaser(
 ) {
     let hurry = (0.10 - stats.threat * 0.04).max(0.05);
     for (mut indices, mut timer, mut atlas) in &mut query {
-        timer.set_duration(std::time::Duration::from_secs_f32(hurry));
+        timer.set_duration(safe_duration(hurry));
         timer.tick(time.delta());
         if timer.just_finished() {
             indices.first = 9;

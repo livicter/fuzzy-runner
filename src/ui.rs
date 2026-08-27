@@ -2,14 +2,14 @@ use crate::assets::GameAssets;
 use bevy::prelude::*;
 use bevy::sprite::{BorderRect, ImageScaleMode, SliceScaleMode, TextureSlicer};
 use fuzzy_runner::{
-    countdown_label, despawn_screen, displayed_meters, milestone_crossed, AnimationIndices,
-    AnimationTimer, ChaserWarn, CoinCollected, CoinHudPunch, CoinText, ComboText, Countdown,
-    DeathEvent, Difficulty, DistanceText, GameConfig, GameState, GoSplash, HighScores, IgnoreSwipe,
-    LastRun, MilestoneToast, OnGameOverMenu, OnGameScreen, OnMainMenu, OnPauseMenu, OnSettingsMenu,
-    PauseButton, PendingCommands, Player, PlayerStumbled, PowerChip, PowerUpCollected, PowerUpKind,
-    RunnerCommand, RunStats, ScoreText, ScreenFlash, SettingsOrigin, StatusText, ThreatFill,
-    TitlePreview, TouchControl, Vignette, GROUND_Y, NEON_CYAN, NEON_GOLD, NEON_LIME, NEON_MAGENTA,
-    PLATFORM_THICKNESS, PLAYER_SIZE,
+    countdown_label, despawn_screen, displayed_meters, milestone_crossed, safe_timer, set_text,
+    try_despawn, AnimationIndices, AnimationTimer, ChaserWarn, CoinCollected, CoinHudPunch,
+    CoinText, ComboText, Countdown, DeathEvent, Difficulty, DistanceText, GameConfig, GameState,
+    GoSplash, HighScores, IgnoreSwipe, LastRun, MilestoneToast, OnGameOverMenu, OnGameScreen,
+    OnMainMenu, OnPauseMenu, OnSettingsMenu, PauseButton, PendingCommands, Player, PlayerStumbled,
+    PowerChip, PowerUpCollected, PowerUpKind, RunnerCommand, RunStats, ScoreText, ScreenFlash,
+    SettingsOrigin, StatusText, ThreatFill, TitlePreview, TouchControl, Vignette, GROUND_Y,
+    NEON_CYAN, NEON_GOLD, NEON_LIME, NEON_MAGENTA, PLATFORM_THICKNESS, PLAYER_SIZE,
 };
 
 #[derive(Component)]
@@ -176,7 +176,7 @@ fn update_difficulty_label(
     mut query: Query<&mut Text, With<DifficultyLabel>>,
 ) {
     if let Ok(mut text) = query.get_single_mut() {
-        text.sections[0].value = format!("DIFFICULTY: {}", config.difficulty.label());
+        set_text(&mut text, format!("DIFFICULTY: {}", config.difficulty.label()));
     }
 }
 
@@ -922,7 +922,7 @@ fn setup_game_ui(
                             ..default()
                         },
                         CoinHudPunch {
-                            timer: Timer::from_seconds(0.01, TimerMode::Once),
+                            timer: safe_timer(0.01, TimerMode::Once),
                         },
                     ));
                     row.spawn((
@@ -1356,13 +1356,13 @@ fn update_hud(
     player_query: Query<&Player>,
 ) {
     if let Ok(mut text) = score_query.get_single_mut() {
-        text.sections[0].value = format!("SCORE {}", stats.score());
+        set_text(&mut text, format!("SCORE {}", stats.score()));
     }
     if let Ok(mut text) = distance_query.get_single_mut() {
-        text.sections[0].value = format!("{}m", displayed_meters(stats.distance));
+        set_text(&mut text, format!("{}m", displayed_meters(stats.distance)));
     }
     if let Ok(mut text) = coin_query.get_single_mut() {
-        text.sections[0].value = format!("{}", stats.coins);
+        set_text(&mut text, format!("{}", stats.coins));
     }
     if let Ok(mut fill) = threat_query.get_single_mut() {
         fill.width = Val::Percent((stats.threat * 100.0).clamp(0.0, 100.0));
@@ -1392,11 +1392,14 @@ fn update_hud(
         };
     }
     if let Ok(mut text) = status_query.get_single_mut() {
-        text.sections[0].value = if stats.threat > 0.35 {
-            "CLOSING IN".to_string()
-        } else {
-            String::new()
-        };
+        set_text(
+            &mut text,
+            if stats.threat > 0.35 {
+                "CLOSING IN".to_string()
+            } else {
+                String::new()
+            },
+        );
     }
 }
 
@@ -1406,7 +1409,7 @@ fn show_power_up_status(
 ) {
     if let Some(event) = events.read().last() {
         if let Ok(mut text) = status_query.get_single_mut() {
-            text.sections[0].value = event.kind.label().to_string();
+            set_text(&mut text, event.kind.label());
         }
     }
 }
@@ -1606,7 +1609,7 @@ fn setup_go_splash(mut commands: Commands, stats: Res<RunStats>, assets: Res<Gam
                 ..default()
             },
             GoSplash {
-                timer: Timer::from_seconds(3.2, TimerMode::Once),
+                timer: safe_timer(3.2, TimerMode::Once),
             },
             OnGameScreen,
         ))
@@ -1646,7 +1649,7 @@ fn tick_go_splash(
 ) {
     if let Some(label) = countdown_label(countdown.remaining) {
         for mut text in &mut labels {
-            text.sections[0].value = label.to_string();
+            set_text(&mut text, label);
         }
         let fade = if label == "GO!" { 0.10 } else { 0.22 };
         for (_, mut background) in &mut query {
@@ -1654,7 +1657,7 @@ fn tick_go_splash(
         }
     } else {
         for (entity, _) in &query {
-            commands.entity(entity).despawn_recursive();
+            try_despawn(&mut commands, entity);
         }
     }
 }
@@ -1682,7 +1685,7 @@ fn announce_milestones(
                     ..default()
                 },
                 MilestoneToast {
-                    timer: Timer::from_seconds(1.4, TimerMode::Once),
+                    timer: safe_timer(1.4, TimerMode::Once),
                 },
                 OnGameScreen,
             ))
@@ -1731,7 +1734,7 @@ fn tick_toasts(
     for (entity, mut toast) in &mut query {
         toast.timer.tick(time.delta());
         if toast.timer.finished() {
-            commands.entity(entity).despawn_recursive();
+            try_despawn(&mut commands, entity);
         }
     }
 }
@@ -1759,7 +1762,7 @@ fn flash_on_stumble(
             ..default()
         },
         ScreenFlash {
-            timer: Timer::from_seconds(0.28, TimerMode::Once),
+            timer: safe_timer(0.28, TimerMode::Once),
         },
         OnGameScreen,
     ));
@@ -1775,7 +1778,7 @@ fn tick_screen_flash(
         let fade = 1.0 - flash.timer.fraction();
         *background = Color::rgba(1.0, 0.15, 0.2, 0.32 * fade).into();
         if flash.timer.finished() {
-            commands.entity(entity).despawn_recursive();
+            try_despawn(&mut commands, entity);
         }
     }
 }
@@ -1788,7 +1791,7 @@ fn punch_coin_hud(
     let punched = events.read().last().is_some();
     for (mut style, mut punch) in &mut query {
         if punched {
-            punch.timer = Timer::from_seconds(0.22, TimerMode::Once);
+            punch.timer = safe_timer(0.22, TimerMode::Once);
         }
         punch.timer.tick(time.delta());
         let t = if punch.timer.finished() {
@@ -1834,11 +1837,14 @@ fn update_combo_hud(stats: Res<RunStats>, mut query: Query<&mut Text, With<Combo
     let Ok(mut text) = query.get_single_mut() else {
         return;
     };
-    text.sections[0].value = if stats.combo >= 3 {
-        format!("COMBO x{}", stats.combo)
-    } else {
-        String::new()
-    };
+    set_text(
+        &mut text,
+        if stats.combo >= 3 {
+            format!("COMBO x{}", stats.combo)
+        } else {
+            String::new()
+        },
+    );
 }
 
 fn handle_touch_controls(
@@ -1879,7 +1885,7 @@ fn setup_title_preview(
         },
         TitlePreview,
         AnimationIndices { first: 9, last: 10 },
-        AnimationTimer(Timer::from_seconds(0.10, TimerMode::Repeating)),
+        AnimationTimer(safe_timer(0.10, TimerMode::Repeating)),
     ));
 }
 

@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 use bevy::prelude::*;
 
 mod assets;
@@ -15,8 +17,9 @@ use crate::fx::FxPlugin;
 use background::BackgroundPlugin;
 use collectibles::CollectiblesPlugin;
 use fuzzy_runner::{
-    CameraImpulse, Countdown, Distance, GameConfig, GameState, HighScores, IgnoreSwipe, LastRun,
-    OnGameScreen, PendingCommands, PlatformQueue, RunStats, SettingsOrigin, TrackCursor,
+    try_despawn, CameraImpulse, Countdown, Distance, GameConfig, GameState, HighScores,
+    IgnoreSwipe, LastRun, OnGameScreen, PendingCommands, PlatformQueue, RunStats, SettingsOrigin,
+    TrackCursor,
 };
 use platform::PlatformPlugin;
 use player::PlayerPlugin;
@@ -71,7 +74,7 @@ fn reset_session(
     pending: &mut PendingCommands,
 ) {
     for entity in game_screen_entities {
-        commands.entity(entity).despawn_recursive();
+        try_despawn(commands, entity);
     }
     distance.0 = 0.0;
     platform_queue.0.clear();

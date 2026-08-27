@@ -1,10 +1,10 @@
 use crate::assets::GameAssets;
 use bevy::prelude::*;
 use fuzzy_runner::{
-    lane_scale, lane_z, plan_segment, Bob, Coin, CoinSpin, Decor, GameConfig, GameState, Obstacle,
-    ObstacleKind, OnGameScreen, Platform, PlatformQueue, Player, PowerUp, PowerUpKind, RunStats,
-    SegmentPlan, Spin, TorchFlicker, TrackCursor, GROUND_Y, INITIAL_TRACK_END, PLATFORM_THICKNESS,
-    TRACK_LOOKAHEAD, VIEWPORT_WIDTH,
+    lane_scale, lane_z, plan_segment, safe_timer, try_despawn, Bob, Coin, CoinSpin, Decor,
+    GameConfig, GameState, Obstacle, ObstacleKind, OnGameScreen, Platform, PlatformQueue, Player,
+    PowerUp, PowerUpKind, RunStats, SegmentPlan, Spin, TorchFlicker, TrackCursor, GROUND_Y,
+    INITIAL_TRACK_END, PLATFORM_THICKNESS, TRACK_LOOKAHEAD, VIEWPORT_WIDTH,
 };
 
 const TILE: f32 = 70.0;
@@ -290,7 +290,7 @@ fn spawn_coin(commands: &mut Commands, assets: &GameAssets, x: f32, lane: i32, a
         },
         Coin { value: 1, lane },
         CoinSpin {
-            timer: Timer::from_seconds(0.12, TimerMode::Repeating),
+            timer: safe_timer(0.12, TimerMode::Repeating),
             frame: (x as u32 % 3) as usize,
         },
         Bob {
@@ -539,7 +539,7 @@ fn spawn_scenery(commands: &mut Commands, assets: &GameAssets, x: f32, roll: f32
                 },
                 Decor,
                 TorchFlicker {
-                    timer: Timer::from_seconds(0.12, TimerMode::Repeating),
+                    timer: safe_timer(0.12, TimerMode::Repeating),
                 },
                 OnGameScreen,
             ));
@@ -845,7 +845,7 @@ fn manage_track(
             let platform_right_edge = platform_transform.translation.x + (platform.size.x / 2.0);
             let screen_left_edge = player_x - (VIEWPORT_WIDTH / 2.0) - 80.0;
             if platform_right_edge < screen_left_edge {
-                commands.entity(first_platform_entity).despawn_recursive();
+                try_despawn(&mut commands, first_platform_entity);
                 platform_queue.pop_front();
             }
         }
@@ -853,7 +853,7 @@ fn manage_track(
 
     for (entity, transform) in &item_query {
         if transform.translation.x < player_x - (VIEWPORT_WIDTH / 2.0) - 80.0 {
-            commands.entity(entity).despawn_recursive();
+            try_despawn(&mut commands, entity);
         }
     }
 
