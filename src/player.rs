@@ -101,7 +101,8 @@ fn tick_run_timers(
 ) {
     let dt = time.delta_seconds();
     if countdown.active() {
-        countdown.remaining = (countdown.remaining - dt).max(0.0);
+        // Shader/compile hitches can deliver multi-second frames and skip 3-2-1-GO.
+        countdown.remaining = (countdown.remaining - dt.min(0.08)).max(0.0);
     }
     stats.multiplier_timer = (stats.multiplier_timer - dt).max(0.0);
     stats.magnet_timer = (stats.magnet_timer - dt).max(0.0);
@@ -317,7 +318,11 @@ fn update_distance(
     player_query: Query<&Transform, With<Player>>,
     mut distance: ResMut<Distance>,
     mut stats: ResMut<RunStats>,
+    countdown: Res<Countdown>,
 ) {
+    if countdown.active() {
+        return;
+    }
     if let Ok(player_transform) = player_query.get_single() {
         if player_transform.translation.x > distance.0 {
             distance.0 = player_transform.translation.x;

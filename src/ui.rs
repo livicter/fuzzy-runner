@@ -62,7 +62,7 @@ impl Plugin for UiPlugin {
             .add_systems(OnExit(GameState::Paused), despawn_screen::<OnPauseMenu>)
             .add_systems(
                 OnEnter(GameState::GameOver),
-                (record_last_run, setup_game_over_screen),
+                (record_last_run, setup_game_over_screen).chain(),
             )
             .add_systems(
                 OnExit(GameState::GameOver),
