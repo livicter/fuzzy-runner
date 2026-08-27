@@ -2,12 +2,14 @@ use crate::assets::GameAssets;
 use bevy::prelude::*;
 use bevy::sprite::{BorderRect, ImageScaleMode, SliceScaleMode, TextureSlicer};
 use fuzzy_runner::{
-    despawn_screen, displayed_meters, milestone_crossed, ChaserWarn, CoinCollected, CoinHudPunch,
-    CoinText, DeathEvent, Difficulty, DistanceText, GameConfig, GameState, GoSplash, HighScores,
+    countdown_label, despawn_screen, displayed_meters, milestone_crossed, AnimationIndices,
+    AnimationTimer, ChaserWarn, CoinCollected, CoinHudPunch, CoinText, ComboText, Countdown,
+    DeathEvent, Difficulty, DistanceText, GameConfig, GameState, GoSplash, HighScores, IgnoreSwipe,
     LastRun, MilestoneToast, OnGameOverMenu, OnGameScreen, OnMainMenu, OnPauseMenu, OnSettingsMenu,
-    PauseButton, Player, PlayerStumbled, PowerChip, PowerUpCollected, PowerUpKind, RunStats,
-    ScoreText, ScreenFlash, SettingsOrigin, StatusText, ThreatFill, NEON_CYAN, NEON_GOLD,
-    NEON_LIME, NEON_MAGENTA,
+    PauseButton, PendingCommands, Player, PlayerStumbled, PowerChip, PowerUpCollected, PowerUpKind,
+    RunnerCommand, RunStats, ScoreText, ScreenFlash, SettingsOrigin, StatusText, ThreatFill,
+    TitlePreview, TouchControl, Vignette, GROUND_Y, NEON_CYAN, NEON_GOLD, NEON_LIME, NEON_MAGENTA,
+    PLATFORM_THICKNESS, PLAYER_SIZE,
 };
 
 #[derive(Component)]
@@ -34,12 +36,24 @@ struct DifficultyChip(Difficulty);
 #[derive(Component)]
 struct MenuButton;
 
+#[derive(Component)]
+struct CountdownLabel;
+
 pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Menu), setup_main_menu)
-            .add_systems(OnExit(GameState::Menu), despawn_screen::<OnMainMenu>)
+        app.add_systems(
+                OnEnter(GameState::Menu),
+                (setup_main_menu, setup_title_preview),
+            )
+            .add_systems(
+                OnExit(GameState::Menu),
+                (
+                    despawn_screen::<OnMainMenu>,
+                    despawn_screen::<TitlePreview>,
+                ),
+            )
             .add_systems(
                 OnEnter(GameState::Playing),
                 (setup_game_ui, setup_go_splash).chain(),
@@ -80,6 +94,15 @@ impl Plugin for UiPlugin {
                     start_from_keyboard.run_if(in_state(GameState::Menu)),
                     restart_from_keyboard.run_if(in_state(GameState::GameOver)),
                 ),
+            )
+            .add_systems(
+                Update,
+                (
+                    update_combo_hud.run_if(in_state(GameState::Playing)),
+                    handle_touch_controls.run_if(in_state(GameState::Playing)),
+                    animate_title_preview.run_if(in_state(GameState::Menu)),
+                    pin_title_preview.run_if(in_state(GameState::Menu)),
+                ),
             );
     }
 }
@@ -103,6 +126,7 @@ fn record_last_run(
     last.distance = stats.distance;
     last.coins = stats.coins;
     last.score = stats.score();
+    last.best_combo = stats.best_combo;
     last.new_high_score = highs.submit(last.score, last.coins, last.distance);
 }
 
@@ -472,7 +496,17 @@ fn setup_main_menu(mut commands: Commands, highs: Res<HighScores>, assets: Res<G
                             body_style(&assets, 22.0, NEON_MAGENTA),
                         )
                         .with_style(Style {
-                            margin: UiRect::bottom(Val::Px(16.0)),
+                            margin: UiRect::bottom(Val::Px(8.0)),
+                            ..default()
+                        }),
+                    );
+                    panel.spawn(
+                        TextBundle::from_section(
+                            "TAP TO RUN",
+                            hud_style(&assets, 16.0, NEON_CYAN),
+                        )
+                        .with_style(Style {
+                            margin: UiRect::bottom(Val::Px(14.0)),
                             ..default()
                         }),
                     );
@@ -901,6 +935,10 @@ fn setup_game_ui(
                     ScoreText,
                 ));
                 left.spawn((
+                    TextBundle::from_section("", hud_style(&assets, 16.0, Color::rgb(1.0, 0.7, 0.2))),
+                    ComboText,
+                ));
+                left.spawn((
                     TextBundle::from_section("", hud_style(&assets, 15.0, NEON_LIME)),
                     StatusText,
                 ));
@@ -1118,7 +1156,7 @@ fn setup_game_ui(
                 ..default()
             });
             compass.spawn(TextBundle::from_section(
-                "SWIPE",
+                "SWIPE OR TAP",
                 hud_style(&assets, 12.0, Color::rgb(0.78, 0.86, 1.0)),
             ));
             compass.spawn(ImageBundle {
@@ -1142,6 +1180,136 @@ fn setup_game_ui(
                 ..default()
             });
         });
+
+    spawn_vignette(&mut commands);
+    spawn_touch_pads(&mut commands, &assets);
+}
+
+fn spawn_touch_pads(commands: &mut Commands, assets: &GameAssets) {
+    commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width: Val::Percent(100.0),
+                    bottom: Val::Px(10.0),
+                    justify_content: JustifyContent::Center,
+                    column_gap: Val::Px(10.0),
+                    ..default()
+                },
+                ..default()
+            },
+            OnGameScreen,
+        ))
+        .with_children(|row| {
+            for (command, icon, image) in [
+                (
+                    RunnerCommand::LaneLeft,
+                    assets.icon_arrow_left.clone(),
+                    assets.button.clone(),
+                ),
+                (
+                    RunnerCommand::Jump,
+                    assets.icon_arrow_up.clone(),
+                    assets.button_blue.clone(),
+                ),
+                (
+                    RunnerCommand::Slide,
+                    assets.icon_arrow_down.clone(),
+                    assets.button_yellow.clone(),
+                ),
+                (
+                    RunnerCommand::LaneRight,
+                    assets.icon_arrow_right.clone(),
+                    assets.button_green.clone(),
+                ),
+            ] {
+                row.spawn((
+                    ButtonBundle {
+                        style: Style {
+                            width: Val::Px(78.0),
+                            height: Val::Px(78.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        image: UiImage::new(image),
+                        background_color: Color::rgba(1.0, 1.0, 1.0, 0.82).into(),
+                        z_index: ZIndex::Global(10),
+                        ..default()
+                    },
+                    TouchControl(command),
+                ))
+                .with_children(|btn| {
+                    btn.spawn(ImageBundle {
+                        style: Style {
+                            width: Val::Px(28.0),
+                            height: Val::Px(28.0),
+                            ..default()
+                        },
+                        image: UiImage::new(icon),
+                        ..default()
+                    });
+                });
+            }
+        });
+}
+
+fn spawn_vignette(commands: &mut Commands) {
+    for (width, height, left, right, top, bottom) in [
+        (
+            Val::Percent(100.0),
+            Val::Px(90.0),
+            Val::Px(0.0),
+            Val::Auto,
+            Val::Px(0.0),
+            Val::Auto,
+        ),
+        (
+            Val::Percent(100.0),
+            Val::Px(110.0),
+            Val::Px(0.0),
+            Val::Auto,
+            Val::Auto,
+            Val::Px(0.0),
+        ),
+        (
+            Val::Px(70.0),
+            Val::Percent(100.0),
+            Val::Px(0.0),
+            Val::Auto,
+            Val::Px(0.0),
+            Val::Auto,
+        ),
+        (
+            Val::Px(70.0),
+            Val::Percent(100.0),
+            Val::Auto,
+            Val::Px(0.0),
+            Val::Px(0.0),
+            Val::Auto,
+        ),
+    ] {
+        commands.spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    width,
+                    height,
+                    left,
+                    right,
+                    top,
+                    bottom,
+                    ..default()
+                },
+                background_color: Color::rgba(0.04, 0.0, 0.08, 0.12).into(),
+                z_index: ZIndex::Global(-1),
+                ..default()
+            },
+            Vignette,
+            OnGameScreen,
+        ));
+    }
 }
 
 fn update_hud(
@@ -1355,6 +1523,15 @@ fn setup_game_over_screen(
                                 highs.coins,
                             );
                         });
+                    if last.best_combo >= 3 {
+                        spawn_icon_label(
+                            panel,
+                            &assets,
+                            assets.icon_star.clone(),
+                            format!("BEST COMBO x{}", last.best_combo),
+                            NEON_GOLD,
+                        );
+                    }
                     spawn_image_button(
                         panel,
                         &assets,
@@ -1425,10 +1602,11 @@ fn setup_go_splash(mut commands: Commands, stats: Res<RunStats>, assets: Res<Gam
                     justify_content: JustifyContent::Center,
                     ..default()
                 },
+                background_color: Color::rgba(0.0, 0.0, 0.0, 0.22).into(),
                 ..default()
             },
             GoSplash {
-                timer: Timer::from_seconds(1.25, TimerMode::Once),
+                timer: Timer::from_seconds(3.2, TimerMode::Once),
             },
             OnGameScreen,
         ))
@@ -1449,9 +1627,12 @@ fn setup_go_splash(mut commands: Commands, stats: Res<RunStats>, assets: Res<Gam
                 nine_slice(),
             ))
             .with_children(|banner| {
-                banner.spawn(TextBundle::from_section(
-                    "GO!",
-                    title_style(&assets, 48.0, Color::rgb(0.18, 0.08, 0.04)),
+                banner.spawn((
+                    TextBundle::from_section(
+                        "3",
+                        title_style(&assets, 48.0, Color::rgb(0.18, 0.08, 0.04)),
+                    ),
+                    CountdownLabel,
                 ));
             });
         });
@@ -1459,14 +1640,20 @@ fn setup_go_splash(mut commands: Commands, stats: Res<RunStats>, assets: Res<Gam
 
 fn tick_go_splash(
     mut commands: Commands,
-    time: Res<Time>,
-    mut query: Query<(Entity, &mut GoSplash, &mut BackgroundColor)>,
+    countdown: Res<Countdown>,
+    mut query: Query<(Entity, &mut BackgroundColor), With<GoSplash>>,
+    mut labels: Query<&mut Text, With<CountdownLabel>>,
 ) {
-    for (entity, mut splash, mut background) in &mut query {
-        splash.timer.tick(time.delta());
-        let fade = 1.0 - splash.timer.fraction();
-        *background = Color::rgba(0.0, 0.0, 0.0, fade * 0.18).into();
-        if splash.timer.finished() {
+    if let Some(label) = countdown_label(countdown.remaining) {
+        for mut text in &mut labels {
+            text.sections[0].value = label.to_string();
+        }
+        let fade = if label == "GO!" { 0.10 } else { 0.22 };
+        for (_, mut background) in &mut query {
+            *background = Color::rgba(0.0, 0.0, 0.0, fade).into();
+        }
+    } else {
+        for (entity, _) in &query {
             commands.entity(entity).despawn_recursive();
         }
     }
@@ -1641,4 +1828,88 @@ fn paint_difficulty_chips(
             Color::rgba(1.0, 1.0, 1.0, 0.42).into()
         };
     }
+}
+
+fn update_combo_hud(stats: Res<RunStats>, mut query: Query<&mut Text, With<ComboText>>) {
+    let Ok(mut text) = query.get_single_mut() else {
+        return;
+    };
+    text.sections[0].value = if stats.combo >= 3 {
+        format!("COMBO x{}", stats.combo)
+    } else {
+        String::new()
+    };
+}
+
+fn handle_touch_controls(
+    query: Query<(&Interaction, &TouchControl), (Changed<Interaction>, With<Button>)>,
+    mut pending: ResMut<PendingCommands>,
+    mut ignore_swipe: ResMut<IgnoreSwipe>,
+) {
+    for (interaction, control) in &query {
+        if *interaction == Interaction::Pressed {
+            pending.push(control.0);
+            ignore_swipe.0 = true;
+        }
+    }
+}
+
+fn setup_title_preview(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    existing: Query<Entity, With<TitlePreview>>,
+) {
+    if existing.iter().next().is_some() {
+        return;
+    }
+    let texture: Handle<Image> = asset_server.load("player_tilesheet.png");
+    let layout = TextureAtlasLayout::from_grid(Vec2::new(80.0, 110.0), 9, 3, None, None);
+    let texture_atlas_layout = texture_atlas_layouts.add(layout);
+    let y = GROUND_Y + (PLATFORM_THICKNESS / 2.0) + (PLAYER_SIZE.y / 2.0);
+    commands.spawn((
+        SpriteSheetBundle {
+            texture,
+            atlas: TextureAtlas {
+                layout: texture_atlas_layout,
+                index: 9,
+            },
+            transform: Transform::from_xyz(430.0, y, 6.0).with_scale(Vec3::splat(1.2)),
+            ..default()
+        },
+        TitlePreview,
+        AnimationIndices { first: 9, last: 10 },
+        AnimationTimer(Timer::from_seconds(0.10, TimerMode::Repeating)),
+    ));
+}
+
+fn animate_title_preview(
+    time: Res<Time>,
+    mut query: Query<(&mut AnimationTimer, &AnimationIndices, &mut TextureAtlas), With<TitlePreview>>,
+) {
+    for (mut timer, indices, mut atlas) in &mut query {
+        timer.tick(time.delta());
+        if timer.just_finished() {
+            if atlas.index >= indices.last {
+                atlas.index = indices.first;
+            } else {
+                atlas.index += 1;
+            }
+        }
+    }
+}
+
+fn pin_title_preview(
+    camera: Query<&Transform, (With<Camera>, Without<TitlePreview>)>,
+    mut preview: Query<&mut Transform, With<TitlePreview>>,
+) {
+    let Ok(camera) = camera.get_single() else {
+        return;
+    };
+    let Ok(mut transform) = preview.get_single_mut() else {
+        return;
+    };
+    transform.translation.x = camera.translation.x + 430.0;
+    transform.translation.y = GROUND_Y + (PLATFORM_THICKNESS / 2.0) + (PLAYER_SIZE.y / 2.0);
+    transform.translation.z = 6.0;
 }

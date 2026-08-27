@@ -1,4 +1,4 @@
-use crate::{MAX_RUN_SPEED, SLIDE_DURATION};
+use crate::{COMBO_WINDOW, COUNTDOWN_DURATION, MAX_RUN_SPEED, SLIDE_DURATION};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum Difficulty {
@@ -181,14 +181,51 @@ pub fn milestone_crossed(prev_distance: f32, distance: f32, every_meters: u64) -
     }
 }
 
-pub fn award_coins(base_value: u32, multiplier_active: bool) -> CoinAward {
+pub fn combo_multiplier(combo: u32) -> u32 {
+    (1 + combo / 5).min(5)
+}
+
+pub fn register_combo(combo: u32) -> (u32, f32) {
+    (combo.saturating_add(1), COMBO_WINDOW)
+}
+
+pub fn tick_combo(combo: u32, timer: f32, dt: f32) -> (u32, f32) {
+    if combo == 0 {
+        return (0, 0.0);
+    }
+    let next = timer - dt;
+    if next <= 0.0 {
+        (0, 0.0)
+    } else {
+        (combo, next)
+    }
+}
+
+pub fn countdown_label(remaining: f32) -> Option<&'static str> {
+    if remaining <= 0.0 {
+        None
+    } else if remaining > COUNTDOWN_DURATION * 0.75 {
+        Some("3")
+    } else if remaining > COUNTDOWN_DURATION * 0.50 {
+        Some("2")
+    } else if remaining > COUNTDOWN_DURATION * 0.25 {
+        Some("1")
+    } else {
+        Some("GO!")
+    }
+}
+
+pub fn award_coins(base_value: u32, multiplier_active: bool, combo: u32) -> CoinAward {
     let coins = base_value.max(1);
-    let points = if multiplier_active {
+    let base_points = if multiplier_active {
         coins * 20
     } else {
         coins * 10
     };
-    CoinAward { coins, points }
+    CoinAward {
+        coins,
+        points: base_points * combo_multiplier(combo),
+    }
 }
 
 pub fn obstacle_cleared(kind: ObstacleKind, jumping: bool, sliding: bool) -> bool {
@@ -353,19 +390,37 @@ mod tests {
         assert_eq!(milestone_crossed(100.0, 200.0, 500), None);
         assert_eq!(milestone_crossed(9990.0, 10010.0, 500), Some(1000));
         assert_eq!(
-            award_coins(1, false),
+            award_coins(1, false, 1),
             CoinAward {
                 coins: 1,
                 points: 10
             }
         );
         assert_eq!(
-            award_coins(1, true),
+            award_coins(1, true, 1),
             CoinAward {
                 coins: 1,
                 points: 20
             }
         );
+        assert_eq!(
+            award_coins(1, false, 6),
+            CoinAward {
+                coins: 1,
+                points: 20
+            }
+        );
+        assert_eq!(combo_multiplier(0), 1);
+        assert_eq!(combo_multiplier(5), 2);
+        assert_eq!(combo_multiplier(20), 5);
+        assert_eq!(register_combo(4), (5, COMBO_WINDOW));
+        assert_eq!(tick_combo(4, 0.1, 0.2), (0, 0.0));
+        assert_eq!(tick_combo(4, 0.50, 0.25), (4, 0.25));
+        assert_eq!(countdown_label(3.1), Some("3"));
+        assert_eq!(countdown_label(2.1), Some("2"));
+        assert_eq!(countdown_label(1.1), Some("1"));
+        assert_eq!(countdown_label(0.4), Some("GO!"));
+        assert_eq!(countdown_label(0.0), None);
     }
 
     #[test]
